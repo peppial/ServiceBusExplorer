@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             xmlns:views="using:SbExplorer.App.Views"
+             x:Class="SbExplorer.App.Views.SessionsView"
+             x:DataType="vm:SessionsViewModel">
+  <Grid ColumnDefinitions="300,4,*">
+    <DockPanel Grid.Column="0">
+      <WrapPanel DockPanel.Dock="Top" ItemSpacing="6" LineSpacing="6" Margin="0,0,0,8">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="Scan" VerticalAlignment="Center" />
+          <NumericUpDown Value="{Binding ScanLimit}" Minimum="10" Maximum="50000" Increment="500" FormatString="0"
+                         Width="120" ParsingNumberStyle="Integer" ToolTip.Tip="How many messages to peek when looking for sessions" />
+        </StackPanel>
+        <Button Content="Find sessions" Classes="accent" Command="{Binding FindSessionsCommand}" />
+        <Button Content="Open by ID…" Command="{Binding OpenSessionCommand}" />
+      </WrapPanel>
+      <TextBlock DockPanel.Dock="Top" x:Name="SessionsStatus" Text="{Binding Status}" Classes.error="{Binding HasError}"
+                 TextWrapping="Wrap" FontSize="12" Margin="0,0,0,6"
+                 IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TableView x:Name="SessionTable" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}">
+        <TableView.Columns>
+          <TableViewColumn Header="Session" Binding="{Binding SessionId, x:DataType=vm:SessionRowViewModel}" Width="110" />
+          <TableViewColumn Header="Peeked" Binding="{Binding MessageCount, x:DataType=vm:SessionRowViewModel}" Width="70" />
+          <TableViewColumn Header="Oldest" Binding="{Binding Oldest, x:DataType=vm:SessionRowViewModel}" Width="140" />
+        </TableView.Columns>
+      </TableView>
+    </DockPanel>
+
+    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+    <Panel Grid.Column="2" Margin="12,0,0,0">
+      <TextBlock Text="Find sessions, or open one by ID." Opacity="0.6"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasSelectedSession}" />
+      <DockPanel IsVisible="{Binding HasSelectedSession}">
+        <Expander DockPanel.Dock="Top" IsExpanded="True" HorizontalAlignment="Stretch" Margin="0,0,0,8">
+          <Expander.Header>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Session state" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding StateSummary}" Opacity="0.6" />
+            </StackPanel>
+          </Expander.Header>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+              <Button Content="Reload" Command="{Binding LoadStateCommand}" />
+              <Button Content="Save state" Command="{Binding SaveStateCommand}" />
+              <Button Content="Clear state…" Command="{Binding ClearStateCommand}" />
+            </StackPanel>
+            <TextBox x:Name="StateBox" Text="{Binding StateText}" AcceptsReturn="True" TextWrapping="NoWrap"
+                     IsReadOnly="{Binding StateIsBinary}" Height="110"
+                     FontFamily="{StaticResource MonoFont}" FontSize="12" PlaceholderText="No state" />
+          </DockPanel>
+        </Expander>
+        <views:MessagesView DataContext="{Binding Messages}" />
+      </DockPanel>
+    </Panel>
+  </Grid>
+</UserControl>

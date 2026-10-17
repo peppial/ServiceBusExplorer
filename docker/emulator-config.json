@@ -16,6 +16,17 @@
             }
           },
           {
+            "Name": "sbx-sessions",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT1H",
+              "LockDuration": "PT30S",
+              "MaxDeliveryCount": 3,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": true
+            }
+          },
+          {
             "Name": "orders",
             "Properties": {
               "DeadLetteringOnMessageExpiration": true,

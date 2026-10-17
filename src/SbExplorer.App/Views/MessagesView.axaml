@@ -9,6 +9,7 @@
     </Border>
 
     <ListBox DockPanel.Dock="Top" x:Name="SubQueueSelector" Classes="segmented" Margin="0,0,0,8"
+             IsVisible="{Binding ShowSubQueues}"
              ItemsSource="{Binding SubQueues}" SelectedItem="{Binding SelectedSubQueue}">
       <ListBox.ItemsPanel>
         <ItemsPanelTemplate>

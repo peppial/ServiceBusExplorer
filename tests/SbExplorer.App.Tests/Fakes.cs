@@ -231,7 +231,7 @@ internal sealed class FakeMessageService : IMessageService
             return Task.FromException<IReadOnlyList<MessageInfo>>(Failure);
         }
 
-        return Task.FromResult<IReadOnlyList<MessageInfo>>(Messages(Key(source))
+        return Task.FromResult<IReadOnlyList<MessageInfo>>(InSource(source)
             .Where(m => m.SequenceNumber >= (fromSequenceNumber ?? 0))
             .Take(maxMessages)
             .ToList());
@@ -239,15 +239,14 @@ internal sealed class FakeMessageService : IMessageService
 
     public Task<IReadOnlyList<MessageInfo>> ReceiveAndDeleteAsync(MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
     {
-        var list = Messages(Key(source));
-        var taken = list.Take(maxMessages).ToList();
-        list.RemoveRange(0, taken.Count);
+        var taken = InSource(source).Take(maxMessages).ToList();
+        Messages(Key(source)).RemoveAll(taken.Contains);
         return Task.FromResult<IReadOnlyList<MessageInfo>>(taken);
     }
 
     public Task<IReceivedBatch> ReceivePeekLockAsync(MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
     {
-        var locked = Messages(Key(source)).Take(maxMessages)
+        var locked = InSource(source).Take(maxMessages)
             .Select(m => m with { LockToken = Guid.NewGuid().ToString(), LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) })
             .ToList();
         var batch = new FakeBatch(locked);
@@ -290,12 +289,40 @@ internal sealed class FakeMessageService : IMessageService
 
     public Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
     {
-        var list = Messages(Key(source));
-        long count = list.Count;
-        list.Clear();
-        progress?.Report(count);
-        return Task.FromResult(count);
+        var doomed = InSource(source).ToList();
+        Messages(Key(source)).RemoveAll(doomed.Contains);
+        progress?.Report(doomed.Count);
+        return Task.FromResult((long)doomed.Count);
     }
+
+    public int PurgeAllSessionsCalls { get; private set; }
+    public Dictionary<string, byte[]> SessionStates { get; } = [];
+
+    public Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    {
+        PurgeAllSessionsCalls++;
+        return PurgeAsync(source, progress, cancellationToken);
+    }
+
+    public Task<ReadOnlyMemory<byte>?> GetSessionStateAsync(MessageSource source, CancellationToken cancellationToken = default) =>
+        Task.FromResult(SessionStates.TryGetValue(source.SessionId!, out var state) ? new ReadOnlyMemory<byte>(state) : (ReadOnlyMemory<byte>?)null);
+
+    public Task SetSessionStateAsync(MessageSource source, ReadOnlyMemory<byte>? state, CancellationToken cancellationToken = default)
+    {
+        if (state is { } bytes)
+        {
+            SessionStates[source.SessionId!] = bytes.ToArray();
+        }
+        else
+        {
+            SessionStates.Remove(source.SessionId!);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private IEnumerable<MessageInfo> InSource(MessageSource source) =>
+        Messages(Key(source)).Where(m => source.SessionId is null || m.SessionId == source.SessionId);
 
     public Task<IReadOnlyList<long>> DeleteAsync(MessageSource source, IReadOnlyCollection<long> sequenceNumbers, CancellationToken cancellationToken = default)
     {

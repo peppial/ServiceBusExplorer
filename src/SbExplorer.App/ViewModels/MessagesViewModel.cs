@@ -18,15 +18,22 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private readonly IDialogService _dialogs;
     private IReceivedBatch? _lockedBatch;
 
-    public MessagesViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity)
+    public MessagesViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, string? sessionId = null)
     {
         _service = service;
         _dialogs = dialogs;
         Entity = entity;
+        SessionId = sessionId;
         _selectedSubQueue = SubQueues[0];
     }
 
     public EntityInfo Entity { get; }
+
+    /// <summary>Set when this tab shows one session of a session-enabled entity.</summary>
+    public string? SessionId { get; }
+
+    public bool IsSessionView => SessionId is not null;
+    public bool ShowSubQueues => !IsSessionView;
     public ObservableCollection<MessageRowViewModel> Messages { get; } = [];
 
     public IReadOnlyList<SubQueueOption> SubQueues { get; } =
@@ -36,9 +43,16 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         new(SubQueueKind.TransferDeadLetter, "Transfer dead-letter"),
     ];
 
-    public MessageSource Source => Entity.Kind == EntityKind.Subscription
-        ? MessageSource.ForSubscription(Entity.Path.Split('/')[0], Entity.Name, SelectedSubQueue.Kind)
-        : MessageSource.ForQueue(Entity.Name, SelectedSubQueue.Kind);
+    public MessageSource Source
+    {
+        get
+        {
+            var source = Entity.Kind == EntityKind.Subscription
+                ? MessageSource.ForSubscription(Entity.Path.Split('/')[0], Entity.Name, SelectedSubQueue.Kind)
+                : MessageSource.ForQueue(Entity.Name, SelectedSubQueue.Kind);
+            return SessionId is null ? source : source.ForSession(SessionId);
+        }
+    }
 
     public bool IsDeadLetterView => SelectedSubQueue.Kind != SubQueueKind.None;
     public bool IsActiveView => !IsDeadLetterView;
@@ -50,12 +64,17 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     public bool CanBrowse => IsDeadLetterView || Entity.ForwardTo is null;
 
     /// <summary>The active queue of a session entity needs a session receiver; its dead-letter queue doesn't.</summary>
-    public bool CanReceive => CanBrowse && (IsDeadLetterView || !Entity.RequiresSession);
+    public bool CanReceive => CanBrowse && (IsDeadLetterView || !Entity.RequiresSession || IsSessionView);
 
-    public string? Notice => !CanBrowse
+    /// <summary>Purging a whole session entity drains it session by session.</summary>
+    private bool PurgesAllSessions => IsActiveView && Entity.RequiresSession && !IsSessionView;
+
+    public string? Notice => IsSessionView
+        ? null
+        : !CanBrowse
         ? $"This {KindName} forwards every message to '{Entity.ForwardTo}', so Service Bus doesn't allow browsing or receiving here. Open '{Entity.ForwardTo}' instead, or check this {KindName}'s dead-letter queue."
         : IsActiveView && Entity.RequiresSession
-            ? $"This {KindName} requires sessions. Peek shows messages from all sessions; receiving and purging happen per session."
+            ? $"This {KindName} requires sessions. Peek shows messages from all sessions; to receive, open a session on the Sessions tab."
             : IsDeadLetterView && Source.IsSubscription
                 ? $"Resubmitted messages go to the topic '{Source.SendTarget}', so every subscription whose filter matches receives a copy."
                 : null;
@@ -303,18 +322,21 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanPurge), IncludeCancelCommand = true)]
     private async Task PurgeAsync(CancellationToken cancellationToken)
     {
-        if (!await _dialogs.ConfirmAsync("Purge", $"Permanently delete every message in {SourceLabel}? This can't be undone.", "Purge"))
+        var target = PurgesAllSessions ? $"every session of {Source.EntityPath}" : SourceLabel;
+        if (!await _dialogs.ConfirmAsync("Purge", $"Permanently delete every message in {target}? This can't be undone.", "Purge"))
         {
             return;
         }
 
-        var progress = new Progress<long>(count => SetStatus($"Purging {SourceLabel}… {count:N0} deleted so far"));
+        var progress = new Progress<long>(count => SetStatus($"Purging {target}… {count:N0} deleted so far"));
         await RunAsync(async () =>
         {
-            var purged = await _service.PurgeAsync(Source, progress, cancellationToken);
+            var purged = PurgesAllSessions
+                ? await _service.PurgeAllSessionsAsync(Source, progress, cancellationToken)
+                : await _service.PurgeAsync(Source, progress, cancellationToken);
             Messages.Clear();
             SelectedRows = [];
-            return $"Purged {Plural((int)Math.Min(purged, int.MaxValue))} from {SourceLabel}.";
+            return $"Purged {Plural((int)Math.Min(purged, int.MaxValue))} from {target}.";
         });
     }
 
@@ -330,6 +352,11 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     {
         // Topics don't carry RequiresSession, so a session ID is only enforced for queues.
         var sender = new SendMessageViewModel(_service, Source.SendTarget, Entity.Kind == EntityKind.Queue && Entity.RequiresSession, template);
+        if (SessionId is not null)
+        {
+            sender.SessionId = SessionId;
+        }
+
         if (await _dialogs.ShowSendMessageAsync(sender))
         {
             SetStatus(sender.Schedule
@@ -487,11 +514,11 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private bool CanResubmit() => IsDeadLetterView && HasUnlockedSelection();
     private bool CanEditAndResubmit() => IsDeadLetterView && !HasLockedMessages && SelectedMessage is not null;
     private bool CanDelete() => CanReceive && HasUnlockedSelection();
-    private bool CanPurge() => CanReceive && !HasLockedMessages;
+    private bool CanPurge() => (CanReceive || PurgesAllSessions) && CanBrowse && !HasLockedMessages;
 
     private string KindName => Entity.Kind == EntityKind.Subscription ? "subscription" : "queue";
 
-    private string SourceLabel => SelectedSubQueue.Kind switch
+    private string SourceLabel => IsSessionView ? $"session '{SessionId}' of {Source.EntityPath}" : SelectedSubQueue.Kind switch
     {
         SubQueueKind.DeadLetter => $"the dead-letter queue of {Source.EntityPath}",
         SubQueueKind.TransferDeadLetter => $"the transfer dead-letter queue of {Source.EntityPath}",

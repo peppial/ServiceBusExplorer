@@ -24,8 +24,17 @@ public interface IMessageService
     /// <summary>Cancels scheduled messages on a queue or topic.</summary>
     Task CancelScheduledAsync(string entityName, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes every message in the source; reports the running total.</summary>
+    /// <summary>Deletes every message in the source (or in its one session); reports the running total.</summary>
     Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes every message in every session of a session-enabled entity, one session at a time.</summary>
+    Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads a session's state; null when none is set. Briefly locks the session.</summary>
+    Task<ReadOnlyMemory<byte>?> GetSessionStateAsync(MessageSource source, CancellationToken cancellationToken = default);
+
+    /// <summary>Replaces a session's state; null clears it. Briefly locks the session.</summary>
+    Task SetSessionStateAsync(MessageSource source, ReadOnlyMemory<byte>? state, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes specific messages. Service Bus can't receive an arbitrary message by sequence number, so this

@@ -23,6 +23,7 @@ public partial class ExplorerViewModel(
 
     // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
     private readonly Dictionary<string, MessagesViewModel> _messageTabs = [];
+    private readonly Dictionary<string, SessionsViewModel> _sessionTabs = [];
 
     private readonly IEntityService _entities = session.Entities;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -41,7 +42,8 @@ public partial class ExplorerViewModel(
         : null;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages))]
+    [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages),
+        nameof(Sessions), nameof(HasSessions))]
     private TreeNodeViewModel? _selectedNode;
 
     [ObservableProperty]
@@ -79,6 +81,28 @@ public partial class ExplorerViewModel(
         }
     }
 
+    public bool HasSessions => Sessions is not null;
+
+    /// <summary>The Sessions tab, for session-enabled queues and subscriptions.</summary>
+    public SessionsViewModel? Sessions
+    {
+        get
+        {
+            if (SelectedEntity is not { Kind: EntityKind.Queue or EntityKind.Subscription, RequiresSession: true } entity)
+            {
+                return null;
+            }
+
+            if (!_sessionTabs.TryGetValue(entity.Path, out var tab))
+            {
+                tab = new SessionsViewModel(session.Messages, dialogs, entity);
+                _sessionTabs[entity.Path] = tab;
+            }
+
+            return tab;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         foreach (var tab in _messageTabs.Values)
@@ -86,7 +110,13 @@ public partial class ExplorerViewModel(
             await tab.DisposeAsync();
         }
 
+        foreach (var tab in _sessionTabs.Values)
+        {
+            await tab.DisposeAsync();
+        }
+
         _messageTabs.Clear();
+        _sessionTabs.Clear();
     }
 
     public IReadOnlyList<PropertyGroupViewModel> PropertyGroups =>

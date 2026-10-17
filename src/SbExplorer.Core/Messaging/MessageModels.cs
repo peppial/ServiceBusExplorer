@@ -7,9 +7,17 @@ public enum SubQueueKind
     TransferDeadLetter,
 }
 
-/// <summary>Where messages are read from: a queue or a subscription, optionally its dead-letter sub-queue.</summary>
+/// <summary>
+/// Where messages are read from: a queue or a subscription, optionally its dead-letter sub-queue, or a single
+/// session of a session-enabled entity.
+/// </summary>
 public sealed record MessageSource(string EntityPath, string? Topic, string? Subscription, SubQueueKind SubQueue = SubQueueKind.None)
 {
+    /// <summary>When set, operations go through a session receiver for this session only.</summary>
+    public string? SessionId { get; init; }
+
+    public MessageSource ForSession(string sessionId) => this with { SubQueue = SubQueueKind.None, SessionId = sessionId };
+
     public static MessageSource ForQueue(string queue, SubQueueKind subQueue = SubQueueKind.None) =>
         new(queue, null, null, subQueue);
 

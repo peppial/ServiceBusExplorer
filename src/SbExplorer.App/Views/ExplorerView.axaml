@@ -102,6 +102,9 @@
             <TabItem Header="Messages" IsVisible="{Binding HasMessages}">
               <views:MessagesView DataContext="{Binding Messages}" Margin="0,8,0,0" />
             </TabItem>
+            <TabItem Header="Sessions" IsVisible="{Binding HasSessions}">
+              <views:SessionsView DataContext="{Binding Sessions}" Margin="0,8,0,0" />
+            </TabItem>
           </TabControl>
         </DockPanel>
       </Panel>

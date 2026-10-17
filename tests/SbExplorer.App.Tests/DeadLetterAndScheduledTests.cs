@@ -147,13 +147,14 @@ public class DeadLetterAndScheduledTests
     }
 
     [Fact]
-    public void Active_queue_of_a_session_entity_cannot_be_purged_here()
+    public void Active_queue_of_a_session_entity_cannot_be_received_but_can_be_purged()
     {
         var vm = new MessagesViewModel(_service, _dialogs, Orders with { RequiresSession = true });
 
-        Assert.False(vm.PurgeCommand.CanExecute(null));
-        vm.SelectedSubQueue = vm.SubQueues[1];
+        Assert.False(vm.ReceiveLockedCommand.CanExecute(null));
         Assert.True(vm.PurgeCommand.CanExecute(null));
+        vm.SelectedSubQueue = vm.SubQueues[1];
+        Assert.True(vm.ReceiveLockedCommand.CanExecute(null));
     }
 
     [Fact]

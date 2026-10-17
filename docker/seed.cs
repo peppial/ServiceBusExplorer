@@ -144,29 +144,24 @@ async Task ClearAsync(string entity, string? subscription)
     }
 }
 
+// Drains each session by ID. AcceptNextSession with a timeout is avoided: a cancelled accept can stay pending
+// on the broker and swallow the sessions this script is about to send.
 async Task ClearSessionsAsync(string queue)
 {
-    while (true)
+    await using var browser = client.CreateReceiver(queue);
+    var sessions = (await browser.PeekMessagesAsync(1000)).Select(m => m.SessionId).Distinct().ToList();
+    foreach (var sessionId in sessions)
     {
-        ServiceBusSessionReceiver session;
-        try
+        await using var session = await client.AcceptSessionAsync(
+            queue, sessionId, new ServiceBusSessionReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
+        while ((await session.ReceiveMessagesAsync(100, TimeSpan.FromSeconds(1))).Count > 0)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            session = await client.AcceptNextSessionAsync(
-                queue, new ServiceBusSessionReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }, timeout.Token);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or ServiceBusException { Reason: ServiceBusFailureReason.ServiceTimeout })
-        {
-            return;
         }
 
-        await using (session)
-        {
-            while ((await session.ReceiveMessagesAsync(100, TimeSpan.FromSeconds(1))).Count > 0)
-            {
-            }
-
-            await session.SetSessionStateAsync(null);
-        }
+        await session.SetSessionStateAsync(null);
     }
+
+    // Session state can outlive its messages; clear the seeded one explicitly.
+    await using var seeded = await client.AcceptSessionAsync(queue, "customer-a");
+    await seeded.SetSessionStateAsync(null);
 }

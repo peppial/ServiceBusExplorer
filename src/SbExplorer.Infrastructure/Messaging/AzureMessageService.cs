@@ -14,7 +14,18 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     public async Task<IReadOnlyList<MessageInfo>> PeekAsync(
         MessageSource source, int maxMessages, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
-        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        if (source.SessionId is not null)
+        {
+            return await PeekSessionAsync(source, maxMessages, fromSequenceNumber, cancellationToken);
+        }
+
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
+        return await PeekPagesAsync(receiver, maxMessages, fromSequenceNumber, cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<MessageInfo>> PeekPagesAsync(
+        ServiceBusReceiver receiver, int maxMessages, long? fromSequenceNumber, CancellationToken cancellationToken)
+    {
         var messages = new List<MessageInfo>(maxMessages);
         var from = fromSequenceNumber;
 
@@ -34,10 +45,30 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
         return messages;
     }
 
+    /// <summary>
+    /// Peeks one session through a session receiver. If a consumer holds the session lock, scans the entity
+    /// without locking instead, which only finds messages within the first <see cref="MaxScan"/>.
+    /// </summary>
+    private async Task<IReadOnlyList<MessageInfo>> PeekSessionAsync(
+        MessageSource source, int maxMessages, long? fromSequenceNumber, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var session = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
+            return await PeekPagesAsync(session, maxMessages, fromSequenceNumber, cancellationToken);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.SessionCannotBeLocked)
+        {
+            await using var receiver = await OpenReceiverAsync(source with { SessionId = null }, ServiceBusReceiveMode.PeekLock, cancellationToken);
+            var scanned = await PeekPagesAsync(receiver, MaxScan, fromSequenceNumber, cancellationToken);
+            return scanned.Where(m => m.SessionId == source.SessionId).Take(maxMessages).ToList();
+        }
+    }
+
     public async Task<IReadOnlyList<MessageInfo>> ReceiveAndDeleteAsync(
         MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
     {
-        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.ReceiveAndDelete);
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.ReceiveAndDelete, cancellationToken);
         var messages = new List<MessageInfo>(maxMessages);
         var wait = maxWaitTime;
         while (messages.Count < maxMessages)
@@ -60,7 +91,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     public async Task<IReceivedBatch> ReceivePeekLockAsync(
         MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
     {
-        var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
         try
         {
             var received = new List<ServiceBusReceivedMessage>(maxMessages);
@@ -130,7 +161,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     public async Task<IReceivedBatch> ReceiveDeferredAsync(
         MessageSource source, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default)
     {
-        var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
         try
         {
             var received = await receiver.ReceiveDeferredMessagesAsync(sequenceNumbers, cancellationToken);
@@ -151,7 +182,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
 
     public async Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
     {
-        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.ReceiveAndDelete, prefetch: PurgeBatch);
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.ReceiveAndDelete, cancellationToken, PurgeBatch);
         long purged = 0;
         var wait = TimeSpan.FromSeconds(5);
         while (true)
@@ -172,7 +203,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     public async Task<IReadOnlyList<long>> DeleteAsync(
         MessageSource source, IReadOnlyCollection<long> sequenceNumbers, CancellationToken cancellationToken = default)
     {
-        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
         return await ProcessMatchingAsync(receiver, sequenceNumbers, _ => Task.CompletedTask, cancellationToken);
     }
 
@@ -182,7 +213,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
         string targetEntity,
         CancellationToken cancellationToken = default)
     {
-        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
         await using var sender = client.CreateSender(targetEntity);
         return await ProcessMatchingAsync(
             receiver,
@@ -259,6 +290,77 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
         }
 
         return done;
+    }
+
+    /// <summary>
+    /// Finds sessions by peeking, then drains each one by ID, until a pass finds nothing receivable.
+    /// AcceptNextSession isn't used: cancelling it on the client can leave the accept pending on the broker,
+    /// which then claims (and, in receive-and-delete mode, empties) the next session to arrive.
+    /// </summary>
+    public async Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    {
+        long purged = 0;
+        var plain = source with { SessionId = null };
+        while (true)
+        {
+            IReadOnlyList<MessageInfo> peeked;
+            await using (var browser = await OpenReceiverAsync(plain, ServiceBusReceiveMode.PeekLock, cancellationToken))
+            {
+                peeked = await PeekPagesAsync(browser, MaxScan, null, cancellationToken);
+            }
+
+            // Scheduled and deferred messages can't be received normally, so they don't count as work left.
+            var sessions = peeked
+                .Where(m => m.State == MessageState.Active && !string.IsNullOrEmpty(m.SessionId))
+                .Select(m => m.SessionId!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var before = purged;
+            foreach (var sessionId in sessions)
+            {
+                purged += await PurgeAsync(plain.ForSession(sessionId), new Progress<long>(n => progress?.Report(purged + n)), cancellationToken);
+                progress?.Report(purged);
+            }
+
+            if (sessions.Count == 0 || purged == before)
+            {
+                return purged;
+            }
+        }
+    }
+
+    public async Task<ReadOnlyMemory<byte>?> GetSessionStateAsync(MessageSource source, CancellationToken cancellationToken = default)
+    {
+        await using var session = (ServiceBusSessionReceiver)await OpenReceiverAsync(RequireSession(source), ServiceBusReceiveMode.PeekLock, cancellationToken);
+        var state = await session.GetSessionStateAsync(cancellationToken);
+
+        // Service Bus returns null for no state; the emulator returns an empty value. Treat both as none.
+        // An untyped null would convert through ReadOnlyMemory's array conversion into an empty, non-null value.
+        return state is null || state.ToMemory().IsEmpty ? (ReadOnlyMemory<byte>?)null : state.ToMemory();
+    }
+
+    public async Task SetSessionStateAsync(MessageSource source, ReadOnlyMemory<byte>? state, CancellationToken cancellationToken = default)
+    {
+        await using var session = (ServiceBusSessionReceiver)await OpenReceiverAsync(RequireSession(source), ServiceBusReceiveMode.PeekLock, cancellationToken);
+        await session.SetSessionStateAsync(state is { } bytes ? new BinaryData(bytes) : null, cancellationToken);
+    }
+
+    private static MessageSource RequireSession(MessageSource source) =>
+        source.SessionId is null ? throw new ArgumentException("A session ID is required.", nameof(source)) : source;
+
+    /// <summary>Opens a plain receiver, or accepts the source's session when it names one.</summary>
+    private async Task<ServiceBusReceiver> OpenReceiverAsync(
+        MessageSource source, ServiceBusReceiveMode mode, CancellationToken cancellationToken, int prefetch = 0)
+    {
+        if (source.SessionId is { } sessionId)
+        {
+            var sessionOptions = new ServiceBusSessionReceiverOptions { ReceiveMode = mode, PrefetchCount = prefetch };
+            return source.IsSubscription
+                ? await client.AcceptSessionAsync(source.Topic!, source.Subscription!, sessionId, sessionOptions, cancellationToken)
+                : await client.AcceptSessionAsync(source.EntityPath, sessionId, sessionOptions, cancellationToken);
+        }
+
+        return CreateReceiver(source, mode, prefetch);
     }
 
     private ServiceBusReceiver CreateReceiver(MessageSource source, ServiceBusReceiveMode mode, int prefetch = 0)
