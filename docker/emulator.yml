@@ -1,5 +1,7 @@
 # Local Azure Service Bus emulator for integration tests and manual testing.
 #   docker compose -f docker/emulator.yml up -d
+# Seed sample messages (the emulator caps TTL at 1 hour, so re-run after a while):
+#   dotnet run docker/seed.cs
 # Connection string:
 #   Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
 name: sbx-emulator

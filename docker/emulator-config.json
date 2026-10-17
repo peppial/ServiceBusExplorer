@@ -14,9 +14,115 @@
               "RequiresDuplicateDetection": false,
               "RequiresSession": false
             }
+          },
+          {
+            "Name": "orders",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": true,
+              "DefaultMessageTimeToLive": "PT1H",
+              "LockDuration": "PT1M",
+              "MaxDeliveryCount": 5,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": false
+            }
+          },
+          {
+            "Name": "orders-sessions",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT1H",
+              "LockDuration": "PT30S",
+              "MaxDeliveryCount": 10,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": true
+            }
+          },
+          {
+            "Name": "payments",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT1H",
+              "DuplicateDetectionHistoryTimeWindow": "PT5M",
+              "LockDuration": "PT2M",
+              "MaxDeliveryCount": 3,
+              "RequiresDuplicateDetection": true,
+              "RequiresSession": false
+            }
+          },
+          {
+            "Name": "audit",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT1H",
+              "LockDuration": "PT1M",
+              "MaxDeliveryCount": 10,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": false
+            }
           }
         ],
-        "Topics": []
+        "Topics": [
+          {
+            "Name": "events",
+            "Properties": {
+              "DefaultMessageTimeToLive": "PT1H",
+              "DuplicateDetectionHistoryTimeWindow": "PT1M",
+              "RequiresDuplicateDetection": false
+            },
+            "Subscriptions": [
+              {
+                "Name": "all-events",
+                "Properties": {
+                  "DeadLetteringOnMessageExpiration": false,
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "LockDuration": "PT1M",
+                  "MaxDeliveryCount": 10,
+                  "RequiresSession": false
+                }
+              },
+              {
+                "Name": "high-priority",
+                "Properties": {
+                  "DeadLetteringOnMessageExpiration": true,
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "LockDuration": "PT1M",
+                  "MaxDeliveryCount": 3,
+                  "RequiresSession": false
+                },
+                "Rules": [
+                  {
+                    "Name": "priority-high",
+                    "Properties": {
+                      "FilterType": "Sql",
+                      "SqlFilter": { "SqlExpression": "priority = 'high'" },
+                      "Action": { "SqlExpression": "SET escalated = 'true'" }
+                    }
+                  }
+                ]
+              },
+              {
+                "Name": "billing",
+                "Properties": {
+                  "DeadLetteringOnMessageExpiration": false,
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "LockDuration": "PT1M",
+                  "MaxDeliveryCount": 10,
+                  "ForwardTo": "audit",
+                  "RequiresSession": false
+                },
+                "Rules": [
+                  {
+                    "Name": "invoices",
+                    "Properties": {
+                      "FilterType": "Correlation",
+                      "CorrelationFilter": { "Label": "invoice" }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
     ],
     "Logging": {
