@@ -155,4 +155,27 @@ public sealed class ProductionSafetyTests : IAsyncLifetime
         var message = Assert.Single(await Messages.PeekAsync(MessageSource.ForQueue(queue), 100, cancellationToken: Ct));
         Assert.Equal((0, MessageState.Active), (message.DeliveryCount, message.State));
     }
+
+    [Fact]
+    public async Task A_read_only_connection_peeks_but_cannot_send_or_change_anything()
+    {
+        var queue = $"safety-ro-{_suffix}";
+        await _admin.CreateQueueAsync(new CreateQueueOptions(queue) { DefaultMessageTimeToLive = TimeSpan.FromMinutes(30) }, Ct);
+        _cleanup.Add(() => _admin.DeleteQueueAsync(queue));
+        await Messages.SendAsync(queue, [new OutgoingMessage { MessageId = "existing" }], Ct);
+
+        await using var readOnly = await new AzureNamespaceConnector()
+            .ConnectAsync(new ConnectionProfile { Name = "prod", ReadOnly = true }, Emulator.ConnectionString, Ct);
+
+        Assert.Single(await readOnly.Messages.PeekAsync(MessageSource.ForQueue(queue), 10, cancellationToken: Ct));
+        await Assert.ThrowsAsync<ReadOnlyConnectionException>(() =>
+            readOnly.Messages.SendAsync(queue, [new OutgoingMessage { MessageId = "should-not-arrive" }], Ct));
+        await Assert.ThrowsAsync<ReadOnlyConnectionException>(() => readOnly.Messages.PurgeAsync(MessageSource.ForQueue(queue), cancellationToken: Ct));
+        await Assert.ThrowsAsync<ReadOnlyConnectionException>(() =>
+            readOnly.Entities.DeleteAsync(new EntityInfo { Kind = EntityKind.Queue, Name = queue, Path = queue }, Ct));
+
+        var left = Assert.Single(await Messages.PeekAsync(MessageSource.ForQueue(queue), 10, cancellationToken: Ct));
+        Assert.Equal(("existing", 0), (left.MessageId, left.DeliveryCount));
+        Assert.Contains(await _session!.Entities.GetQueuesAsync(Ct), q => q.Name == queue);
+    }
 }

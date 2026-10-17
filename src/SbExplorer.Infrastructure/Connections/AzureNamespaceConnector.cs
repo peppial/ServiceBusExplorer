@@ -136,8 +136,14 @@ public sealed class AzureNamespaceSession(
     public string? ScopedEntity { get; } = ScopedEntity;
     public ServiceBusClient Client { get; } = client;
     public ServiceBusAdministrationClient Administration { get; } = administration;
-    public IEntityService Entities { get; } = new AzureEntityService(administration);
-    public IMessageService Messages { get; } = new AzureMessageService(client);
+    // A read-only profile gets services that refuse every change, whatever the UI allows.
+    public IEntityService Entities { get; } = profile.ReadOnly
+        ? new ReadOnlyEntityService(new AzureEntityService(administration))
+        : new AzureEntityService(administration);
+
+    public IMessageService Messages { get; } = profile.ReadOnly
+        ? new ReadOnlyMessageService(new AzureMessageService(client))
+        : new AzureMessageService(client);
 
     public AzureNamespaceSession WithoutManagement() =>
         new(Profile, FullyQualifiedNamespace, IsEmulator, ScopedEntity, Client, Administration, CanManage: false);

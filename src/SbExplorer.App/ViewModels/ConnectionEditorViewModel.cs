@@ -29,6 +29,7 @@ public partial class ConnectionEditorViewModel : ObservableObject
             _connectionString = existingSecret ?? string.Empty;
             _namespace = existing.FullyQualifiedNamespace ?? string.Empty;
             _tenantId = existing.TenantId ?? string.Empty;
+            _readOnly = existing.ReadOnly;
             _selectedCredential = CredentialOptions.First(o => o.Kind == existing.EntraCredential);
         }
         else
@@ -69,6 +70,10 @@ public partial class ConnectionEditorViewModel : ObservableObject
 
     [ObservableProperty]
     private string _tenantId = string.Empty;
+
+    /// <summary>Browse and peek only; recommended for production namespaces.</summary>
+    [ObservableProperty]
+    private bool _readOnly;
 
     [ObservableProperty]
     private CredentialOption _selectedCredential;
@@ -126,6 +131,7 @@ public partial class ConnectionEditorViewModel : ObservableObject
         EntraCredential = SelectedCredential.Kind,
         TenantId = UseEntra && !string.IsNullOrWhiteSpace(TenantId) ? TenantId.Trim() : null,
         PinnedEntities = _pinnedEntities,
+        ReadOnly = ReadOnly,
     };
 
     public string? Secret => UseEntra ? null : ConnectionString.Trim();

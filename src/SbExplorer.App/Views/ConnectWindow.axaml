@@ -31,6 +31,8 @@
           <StackPanel>
             <TextBlock Classes="label" Text="Name:" />
             <TextBox x:Name="NameBox" Text="{Binding Editor.Name}" PlaceholderText="Needed only to save the connection" />
+            <CheckBox x:Name="ReadOnlyBox" Content="Read-only: browse and peek only (recommended for production)"
+                      IsChecked="{Binding Editor.ReadOnly}" Margin="0,8,0,0" />
             <TextBlock Classes="hint" TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="{Binding SecretsAreInsecure}"
                        Text="No system keychain found. Saved connection strings are encrypted with a local key file." />
           </StackPanel>

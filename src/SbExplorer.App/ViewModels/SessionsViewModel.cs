@@ -20,7 +20,8 @@ public sealed class SessionRowViewModel(string sessionId, int? messageCount, Dat
 /// The Sessions tab of a session-enabled queue or subscription. The SDK can't list sessions, so they are found
 /// by peeking messages and grouping by session ID, or opened directly by ID.
 /// </summary>
-public partial class SessionsViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, ILogService? log = null)
+public partial class SessionsViewModel(
+    IMessageService service, IDialogService dialogs, EntityInfo entity, ILogService? log = null, bool readOnly = false)
     : ObservableObject, IAsyncDisposable
 {
     private readonly Dictionary<string, MessagesViewModel> _sessionMessages = [];
@@ -71,7 +72,7 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
 
             if (!_sessionMessages.TryGetValue(session.SessionId, out var messages))
             {
-                messages = new MessagesViewModel(service, dialogs, Entity, session.SessionId, log);
+                messages = new MessagesViewModel(service, dialogs, Entity, session.SessionId, log, readOnly: readOnly);
                 _sessionMessages[session.SessionId] = messages;
             }
 
@@ -152,7 +153,7 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
         });
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelectedSession))]
+    [RelayCommand(CanExecute = nameof(CanChangeState))]
     private async Task ClearStateAsync(CancellationToken cancellationToken)
     {
         var sessionId = SelectedSession!.SessionId;
@@ -213,7 +214,9 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
         StateSummary = $"{format} · {DisplayFormat.Size(bytes.Length)}" + (StateIsBinary ? " · binary state is read-only here" : string.Empty);
     }
 
-    private bool CanSaveState() => SelectedSession is not null && !StateIsBinary;
+    private bool CanSaveState() => !readOnly && SelectedSession is not null && !StateIsBinary;
+
+    private bool CanChangeState() => !readOnly && SelectedSession is not null;
 
     private async Task RunAsync(Func<Task<string>> operation)
     {

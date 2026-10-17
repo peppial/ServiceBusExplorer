@@ -24,6 +24,10 @@
       <Button x:Name="UpdateButton" Content="Update" Command="{Binding UpdateCommand}" IsVisible="{Binding CanManage}" />
     </WrapPanel>
 
+    <Border DockPanel.Dock="Top" Classes="notice" IsVisible="{Binding IsReadOnly}">
+      <TextBlock Text="{Binding ReadOnlyNotice}" TextWrapping="Wrap" />
+    </Border>
+
     <TabControl x:Name="DetailTabs" SelectedIndex="{Binding SelectedTab}">
       <TabItem Header="Description">
         <Border Classes="white" Padding="8" Background="{StaticResource WindowBrush}">

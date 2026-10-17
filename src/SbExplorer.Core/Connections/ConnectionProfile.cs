@@ -39,6 +39,12 @@ public sealed record ConnectionProfile
     /// </summary>
     public IReadOnlyList<string> PinnedEntities { get; init; } = [];
 
+    /// <summary>
+    /// Browse and peek only: every operation that sends, receives, settles, deletes or changes entities is refused,
+    /// both in the UI and by the services. Meant for production namespaces.
+    /// </summary>
+    public bool ReadOnly { get; init; }
+
     public string SecretKey => $"connection:{Id:N}";
 
     // Records compare lists by reference; compare pinned entities by content so a reloaded profile equals the saved one.
@@ -50,7 +56,9 @@ public sealed record ConnectionProfile
         && FullyQualifiedNamespace == other.FullyQualifiedNamespace
         && EntraCredential == other.EntraCredential
         && TenantId == other.TenantId
+        && ReadOnly == other.ReadOnly
         && PinnedEntities.SequenceEqual(other.PinnedEntities);
 
-    public override int GetHashCode() => HashCode.Combine(Id, Name, Auth, FullyQualifiedNamespace, EntraCredential, TenantId, PinnedEntities.Count);
+    public override int GetHashCode() =>
+        HashCode.Combine(Id, Name, Auth, FullyQualifiedNamespace, EntraCredential, TenantId, ReadOnly, PinnedEntities.Count);
 }

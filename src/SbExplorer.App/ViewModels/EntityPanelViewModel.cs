@@ -69,13 +69,25 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
     private int _selectedTab;
 
     public bool CanManage => _session.CanManage;
+
+    /// <summary>Changing settings, status, messages or entities: not on a read-only connection.</summary>
+    public bool CanModify => CanManage && !IsReadOnly;
+
+    public bool IsReadOnly => _session.Profile.ReadOnly;
+
+    /// <summary>Sending, receiving and purging need a writable connection (but not the Manage claim).</summary>
+    public bool CanWriteMessages => !IsReadOnly;
+
+    public string? ReadOnlyNotice => IsReadOnly
+        ? "Read-only connection: settings, messages and entities can be viewed and peeked but not changed."
+        : null;
     public bool IsQueue => Entity.Kind == EntityKind.Queue;
     public bool IsTopic => Entity.Kind == EntityKind.Topic;
     public bool IsSubscription => Entity.Kind == EntityKind.Subscription;
     public bool IsRule => Entity.Kind == EntityKind.Rule;
     public bool SupportsMessages => IsQueue || IsSubscription;
     public bool SupportsSessions => SupportsMessages && Entity.RequiresSession;
-    public bool HasStatus => !IsRule && CanManage;
+    public bool HasStatus => !IsRule && CanModify;
     public string StatusButtonLabel => Entity.IsDisabled ? "Enable" : "Disable";
     public string InformationTitle => $"{Entity.Kind} Information";
 
@@ -90,7 +102,7 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         SupportsMessages ? _transferDeadLetters ??= CreateMessages(SubQueueKind.TransferDeadLetter) : null;
 
     public SessionsViewModel? Sessions =>
-        SupportsSessions ? _sessions ??= new SessionsViewModel(_session.Messages, _dialogs, Entity, _log) : null;
+        SupportsSessions ? _sessions ??= new SessionsViewModel(_session.Messages, _dialogs, Entity, _log, IsReadOnly) : null;
 
     /// <summary>After a refresh: show fresh runtime values and reload the settings.</summary>
     public Task UpdateAsync(EntityInfo entity)
@@ -126,7 +138,7 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         await sessions.FindSessionsCommand.ExecuteAsync(null);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanWriteMessages))]
     private async Task PurgeAsync()
     {
         if (Messages is { } messages && messages.PurgeCommand.CanExecute(null))
@@ -137,7 +149,7 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanWriteMessages))]
     private async Task PurgeDeadletterAsync()
     {
         if (DeadLetters is { } deadLetters && deadLetters.PurgeCommand.CanExecute(null))
@@ -148,7 +160,7 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanWriteMessages))]
     private async Task SendAsync()
     {
         if (Messages is { } messages)
@@ -183,20 +195,20 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         SelectedTab = DescriptionTab;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private Task ToggleStatusAsync() =>
         _explorer.SetStatusCommand.ExecuteAsync(Entity.IsDisabled ? EntityStatusValue.Active : EntityStatusValue.Disabled);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private Task DeleteAsync() => _explorer.DeleteCommand.ExecuteAsync(null);
 
     [RelayCommand]
     private Task RefreshAsync() => _explorer.RefreshCommand.ExecuteAsync(null);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private void CreateSubscription() => _explorer.NewSubscriptionCommand.Execute(null);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private void AddRule() => _explorer.NewRuleCommand.Execute(null);
 
     [RelayCommand(CanExecute = nameof(CanUpdate))]
@@ -282,7 +294,7 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
     }
 
     private MessagesViewModel CreateMessages(SubQueueKind subQueue) =>
-        new(_session.Messages, _dialogs, Entity, log: _log, fixedSubQueue: subQueue);
+        new(_session.Messages, _dialogs, Entity, log: _log, fixedSubQueue: subQueue, readOnly: IsReadOnly);
 
     private async Task LoadEditorAsync()
     {
@@ -319,5 +331,5 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private bool CanUpdate() => CanManage && Editor is { IsValid: true };
+    private bool CanUpdate() => CanModify && Editor is { IsValid: true };
 }

@@ -45,7 +45,7 @@ public partial class EntityTreeView : UserControl
 
     internal static List<Control> MenuFor(ExplorerViewModel explorer, TreeNodeViewModel node)
     {
-        var manage = explorer.CanManage;
+        var manage = explorer.CanModify;
         var panel = explorer.Details;
         var expand = new Control[] { new Separator(), Item("Expand Subtree", explorer.ExpandSubtreeCommand), Item("Collapse Subtree", explorer.CollapseSubtreeCommand) };
 

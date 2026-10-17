@@ -244,10 +244,16 @@ public partial class ExplorerViewModel(
 
     public bool CanManage => session.CanManage;
 
-    [RelayCommand(CanExecute = nameof(CanManage))]
+    /// <summary>Read-only connections can browse but not change anything.</summary>
+    public bool IsReadOnly => session.Profile.ReadOnly;
+
+    /// <summary>Creating, changing and deleting entities: needs the Manage claim and a writable connection.</summary>
+    public bool CanModify => CanManage && !IsReadOnly;
+
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private void NewQueue() => Creating = EntityEditorViewModel.NewQueue(_entities);
 
-    [RelayCommand(CanExecute = nameof(CanManage))]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private void NewTopic() => Creating = EntityEditorViewModel.NewTopic(_entities);
 
     [RelayCommand(CanExecute = nameof(HasTopicContext))]
@@ -376,7 +382,7 @@ public partial class ExplorerViewModel(
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanManage))]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task ImportAsync()
     {
         var json = await dialogs.OpenTextFileAsync("Import entity definitions");
@@ -582,9 +588,9 @@ public partial class ExplorerViewModel(
         _ => null,
     };
 
-    private bool HasTopicContext() => CanManage && SelectedTopic is not null;
-    private bool HasSubscriptionContext() => CanManage && SelectedSubscription is not null;
-    private bool HasManageableSelection() => CanManage && SelectedEntity is not null;
+    private bool HasTopicContext() => CanModify && SelectedTopic is not null;
+    private bool HasSubscriptionContext() => CanModify && SelectedSubscription is not null;
+    private bool HasManageableSelection() => CanModify && SelectedEntity is not null;
     private bool CanChangeStatus(EntityStatusValue status) => HasManageableSelection() && SelectedEntity!.Kind != EntityKind.Rule;
 
     private void ShowPinnedEntities(string? selectedPath)

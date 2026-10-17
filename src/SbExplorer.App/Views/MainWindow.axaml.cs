@@ -73,7 +73,8 @@ public partial class MainWindow : Window
         {
             SavedConnectionsMenu.Items.Add(new MenuItem
             {
-                Header = profile.FullyQualifiedNamespace is { } host && host != profile.Name ? $"{profile.Name}  ({host})" : profile.Name,
+                Header = (profile.FullyQualifiedNamespace is { } host && host != profile.Name ? $"{profile.Name}  ({host})" : profile.Name)
+                    + (profile.ReadOnly ? "  [read-only]" : string.Empty),
                 Command = _viewModel!.ConnectSavedCommand,
                 CommandParameter = profile,
             });

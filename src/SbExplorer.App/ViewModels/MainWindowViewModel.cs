@@ -38,7 +38,9 @@ public partial class MainWindowViewModel(
     public bool IsConnected => Session is not null;
     public bool HasSavedConnections => SavedConnections.Count > 0;
 
-    public string Title => Session is null ? "Service Bus Explorer" : $"{Session.FullyQualifiedNamespace} - Service Bus Explorer";
+    public string Title => Session is null
+        ? "Service Bus Explorer"
+        : $"{Session.FullyQualifiedNamespace}{(Session.Profile.ReadOnly ? " (read-only)" : string.Empty)} - Service Bus Explorer";
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -175,6 +177,10 @@ public partial class MainWindowViewModel(
             log.Info(Session.CanManage
                 ? $"Connected to sb://{Session.FullyQualifiedNamespace}/."
                 : $"Connected to sb://{Session.FullyQualifiedNamespace}/ without management access (the credential has no Manage claim).");
+            if (profile.ReadOnly)
+            {
+                log.Info("Read-only connection: messages and entities can be browsed and peeked but not changed.");
+            }
             await RememberHostAsync(Session.FullyQualifiedNamespace);
             Explorer = new ExplorerViewModel(Session, dialogs, savePinnedEntities: SavePinnedAsync, log: log);
             await Explorer.RefreshCommand.ExecuteAsync(null);

@@ -26,8 +26,10 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         EntityInfo entity,
         string? sessionId = null,
         ILogService? log = null,
-        SubQueueKind? fixedSubQueue = null)
+        SubQueueKind? fixedSubQueue = null,
+        bool readOnly = false)
     {
+        IsReadOnly = readOnly;
         _service = service;
         _dialogs = dialogs;
         _log = log;
@@ -36,6 +38,9 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         _selectedSubQueue = SubQueues.First(o => o.Kind == (fixedSubQueue ?? SubQueueKind.None));
         HasFixedSubQueue = fixedSubQueue is not null;
     }
+
+    /// <summary>A read-only connection: peek only.</summary>
+    public bool IsReadOnly { get; }
 
     /// <summary>True for the Deadletter and Transfer Deadletter tabs, which each show one sub-queue.</summary>
     public bool HasFixedSubQueue { get; }
@@ -90,12 +95,14 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     public bool CanBrowse => IsDeadLetterView || Entity.ForwardTo is null;
 
     /// <summary>The active queue of a session entity needs a session receiver; its dead-letter queue doesn't.</summary>
-    public bool CanReceive => CanBrowse && (IsDeadLetterView || !Entity.RequiresSession || IsSessionView);
+    public bool CanReceive => !IsReadOnly && CanBrowse && (IsDeadLetterView || !Entity.RequiresSession || IsSessionView);
 
     /// <summary>Purging a whole session entity drains it session by session.</summary>
     private bool PurgesAllSessions => IsActiveView && Entity.RequiresSession && !IsSessionView;
 
-    public string? Notice => IsSessionView
+    public string? Notice => IsReadOnly
+        ? "Read-only connection: messages can be peeked but not received, sent, resubmitted, deleted or purged."
+        : IsSessionView
         ? null
         : !CanBrowse
         ? $"This {KindName} forwards every message to '{Entity.ForwardTo}', so Service Bus doesn't allow browsing or receiving here. Open '{Entity.ForwardTo}' instead, or check this {KindName}'s dead-letter queue."
@@ -392,10 +399,10 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSend))]
     private Task SendAsync() => OpenSendDialogAsync(template: null);
 
-    [RelayCommand(CanExecute = nameof(HasSelectedMessage))]
+    [RelayCommand(CanExecute = nameof(CanResend))]
     private Task ResendAsync() => OpenSendDialogAsync(SelectedMessage!.Message);
 
     public async ValueTask DisposeAsync() => await ReleaseLocksAsync();
@@ -574,15 +581,18 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private bool CanReceiveDeferred() =>
         CanReceive && HasUnlockedSelection() && SelectedRows.All(r => r.Message.State == MessageState.Deferred);
 
-    private bool CanCancelScheduled() =>
-        IsActiveView && HasUnlockedSelection() && SelectedRows.All(r => r.Message.State == MessageState.Scheduled);
+    private bool CanSend() => !IsReadOnly;
+    private bool CanResend() => !IsReadOnly && HasSelectedMessage();
 
-    private bool CanResubmit() => IsDeadLetterView && HasUnlockedSelection();
-    private bool CanEditAndResubmit() => IsDeadLetterView && !HasLockedMessages && SelectedMessage is not null;
+    private bool CanCancelScheduled() =>
+        !IsReadOnly && IsActiveView && HasUnlockedSelection() && SelectedRows.All(r => r.Message.State == MessageState.Scheduled);
+
+    private bool CanResubmit() => !IsReadOnly && IsDeadLetterView && HasUnlockedSelection();
+    private bool CanEditAndResubmit() => !IsReadOnly && IsDeadLetterView && !HasLockedMessages && SelectedMessage is not null;
     // Only dead-letter queues: finding selected messages in a live queue means locking (and so re-delivering)
     // every message ahead of them, taking them from consumers and raising their delivery counts.
     private bool CanDelete() => IsDeadLetterView && CanReceive && HasUnlockedSelection();
-    private bool CanPurge() => (CanReceive || PurgesAllSessions) && CanBrowse && !HasLockedMessages;
+    private bool CanPurge() => !IsReadOnly && (CanReceive || PurgesAllSessions) && CanBrowse && !HasLockedMessages;
 
     private string KindName => Entity.Kind == EntityKind.Subscription ? "subscription" : "queue";
 

@@ -21,6 +21,10 @@ button bar, and the Log window.
 - **Manage entities:** create, edit, enable or disable and delete queues, topics, subscriptions and SQL or
   correlation rules. Export and import definitions as JSON.
 
+- **Read-only connections:** tick **Read-only** in the connect dialog for production namespaces. You can browse,
+  peek and export, while sending, receiving, resubmitting, deleting, purging and every entity change are refused by
+  the app's services, not just hidden in the UI.
+
 Not included yet: Event Hubs, Relay, Event Grid, Notification Hubs, and the load-test tools of the original.
 
 ## Install
