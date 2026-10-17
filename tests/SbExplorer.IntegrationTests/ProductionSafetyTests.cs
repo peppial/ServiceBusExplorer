@@ -80,14 +80,18 @@ public sealed class ProductionSafetyTests : IAsyncLifetime
     [Fact]
     public async Task Peeking_a_session_does_not_lock_it_away_from_consumers()
     {
-        await Messages.SendAsync("sbx-sessions", [new OutgoingMessage { SessionId = $"live-{_suffix}", Body = "x"u8.ToArray() }], Ct);
-        _cleanup.Add(() => Messages.PurgeAsync(MessageSource.ForQueue("sbx-sessions").ForSession($"live-{_suffix}")));
+        // Its own queue: the shared sbx-sessions queue is purged by other tests running in parallel.
+        var queue = $"safety-sessions-{_suffix}";
+        await _admin.CreateQueueAsync(new CreateQueueOptions(queue) { RequiresSession = true, DefaultMessageTimeToLive = TimeSpan.FromMinutes(30) }, Ct);
+        _cleanup.Add(() => _admin.DeleteQueueAsync(queue));
+        await Messages.SendAsync(queue, [new OutgoingMessage { SessionId = "live", Body = "x"u8.ToArray() }], Ct);
 
-        Assert.Single(await Messages.PeekAsync(MessageSource.ForQueue("sbx-sessions").ForSession($"live-{_suffix}"), 10, cancellationToken: Ct));
+        Assert.Single(await Messages.PeekAsync(MessageSource.ForQueue(queue).ForSession("live"), 10, cancellationToken: Ct));
 
         // A consumer accepting the session right after the peek must get it.
-        await using var consumer = await _client.AcceptSessionAsync("sbx-sessions", $"live-{_suffix}", cancellationToken: Ct);
-        Assert.Single(await consumer.ReceiveMessagesAsync(1, TimeSpan.FromSeconds(5), Ct));
+        await using var consumer = await _client.AcceptSessionAsync(queue, "live", cancellationToken: Ct);
+        var received = Assert.Single(await consumer.ReceiveMessagesAsync(1, TimeSpan.FromSeconds(5), Ct));
+        await consumer.CompleteMessageAsync(received, Ct);
     }
 
     [Fact]
