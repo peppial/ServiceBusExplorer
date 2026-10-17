@@ -90,6 +90,7 @@ internal sealed class FakeSession(ConnectionProfile profile, string host, FakeEn
     public bool IsEmulator { get; } = isEmulator;
     public bool CanManage { get; init; } = true;
     public string? ScopedEntity { get; init; }
+    public string? LimitedReason { get; init; }
     public ConnectionProfile Profile { get; } = profile;
     public string FullyQualifiedNamespace { get; } = host;
     public FakeEntityService FakeEntities { get; } = entities ?? new FakeEntityService();
@@ -223,6 +224,14 @@ internal sealed class FakeEntityService : IEntityService
     public Dictionary<string, object> Definitions { get; } = [];
     public List<string> Calls { get; } = [];
     public Exception? WriteFailure { get; set; }
+
+    /// <summary>Entities a scoped key may read even though it can't list the namespace.</summary>
+    public Dictionary<string, EntityInfo> Readable { get; } = [];
+
+    public Task<EntityInfo> GetEntityAsync(EntityInfo reference, CancellationToken cancellationToken = default) =>
+        Readable.TryGetValue(reference.Path, out var entity) && entity.Kind == reference.Kind
+            ? Task.FromResult(entity)
+            : Task.FromException<EntityInfo>(new UnauthorizedAccessException("Unauthorized"));
 
     public Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default) =>
         Task.FromResult((QueueDefinition)Definitions[name]);

@@ -7,6 +7,12 @@ public interface IEntityService
     Task<IReadOnlyList<EntityInfo>> GetSubscriptionsAsync(string topic, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EntityInfo>> GetRulesAsync(string topic, string subscription, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Settings and runtime counts of one queue, topic or subscription. Works with a key scoped to that entity,
+    /// which can't list the namespace.
+    /// </summary>
+    Task<EntityInfo> GetEntityAsync(EntityInfo reference, CancellationToken cancellationToken = default);
+
     Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default);
     Task<TopicDefinition> GetTopicAsync(string name, CancellationToken cancellationToken = default);
     Task<SubscriptionDefinition> GetSubscriptionAsync(string topic, string name, CancellationToken cancellationToken = default);

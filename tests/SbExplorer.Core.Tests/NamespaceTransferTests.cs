@@ -187,6 +187,8 @@ internal sealed class InMemoryEntityService : IEntityService
     public Task<IReadOnlyList<EntityInfo>> GetRulesAsync(string topic, string subscription, CancellationToken cancellationToken = default) =>
         List(RulesOf(topic, subscription).Select(r => Info(EntityKind.Rule, r.Name, EntityInfo.RulePath(topic, subscription, r.Name))));
 
+    public Task<EntityInfo> GetEntityAsync(EntityInfo reference, CancellationToken cancellationToken = default) => Task.FromResult(reference);
+
     public Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default) => Task.FromResult(Queues[name]);
     public Task<TopicDefinition> GetTopicAsync(string name, CancellationToken cancellationToken = default) => Task.FromResult(Topics[name]);
 

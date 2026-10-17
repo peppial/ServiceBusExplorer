@@ -29,7 +29,7 @@ public class ConnectDialogViewModelTests
 
         Assert.Equal(("Orders", ConnectionString), (dialog.Editor.Name, dialog.Editor.ConnectionString));
         Assert.True(dialog.OkCommand.CanExecute(null));
-        dialog.OkCommand.Execute(null);
+        await dialog.OkCommand.ExecuteAsync(null);
         Assert.True(dialog.Result!.IsSaved);
         Assert.Equal(saved.Id, dialog.Result.Profile.Id);
     }
@@ -69,15 +69,22 @@ public class ConnectDialogViewModelTests
     }
 
     [Fact]
-    public void Ok_without_a_saved_profile_is_not_saved()
+    public async Task Ok_saves_under_the_namespace_name_unless_told_not_to()
     {
         var dialog = Create();
         dialog.Editor.ConnectionString = ConnectionEditorViewModel.EmulatorConnectionString;
 
-        dialog.OkCommand.Execute(null);
+        await dialog.OkCommand.ExecuteAsync(null);
 
-        Assert.False(dialog.Result!.IsSaved);
-        Assert.Equal("localhost", dialog.Result.Profile.Name);
+        Assert.True(dialog.Result!.IsSaved);
+        Assert.Equal("localhost", Assert.Single(_store.Profiles).Name);
+
+        var unsaved = Create();
+        unsaved.Editor.ConnectionString = ConnectionString;
+        unsaved.SaveOnConnect = false;
+        await unsaved.OkCommand.ExecuteAsync(null);
+        Assert.False(unsaved.Result!.IsSaved);
+        Assert.Single(_store.Profiles);
     }
 
     [Fact]

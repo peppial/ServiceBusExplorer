@@ -63,6 +63,9 @@ public sealed class ReadOnlyEntityService(IEntityService inner) : IEntityService
     public Task<IReadOnlyList<EntityInfo>> GetRulesAsync(string topic, string subscription, CancellationToken cancellationToken = default) =>
         inner.GetRulesAsync(topic, subscription, cancellationToken);
 
+    public Task<EntityInfo> GetEntityAsync(EntityInfo reference, CancellationToken cancellationToken = default) =>
+        inner.GetEntityAsync(reference, cancellationToken);
+
     public Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default) => inner.GetQueueAsync(name, cancellationToken);
     public Task<TopicDefinition> GetTopicAsync(string name, CancellationToken cancellationToken = default) => inner.GetTopicAsync(name, cancellationToken);
 

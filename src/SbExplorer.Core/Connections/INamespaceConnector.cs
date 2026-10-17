@@ -21,6 +21,9 @@ public interface INamespaceSession : IAsyncDisposable
     /// <summary>The entity a connection string is scoped to (its EntityPath), if any.</summary>
     string? ScopedEntity { get; }
 
+    /// <summary>Why management access was refused, from Service Bus's answer; null when it wasn't.</summary>
+    string? LimitedReason { get; }
+
     IEntityService Entities { get; }
     IMessageService Messages { get; }
 }

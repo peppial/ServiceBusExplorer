@@ -71,7 +71,18 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
     public bool CanManage => _session.CanManage;
 
     /// <summary>Changing settings, status, messages or entities: not on a read-only connection.</summary>
-    public bool CanModify => CanManage && !IsReadOnly;
+    public bool CanModify => (CanManage || EntityManageable) && !IsReadOnly;
+
+    /// <summary>
+    /// The key can't list the namespace but could read this entity's settings, e.g. a Manage policy on the queue
+    /// itself, so the Description tab can still be edited and saved.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanModify), nameof(CanEditSettings))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateCommand))]
+    private bool _entityManageable;
+
+    public bool CanEditSettings => CanManage || EntityManageable;
 
     public bool IsReadOnly => _session.Profile.ReadOnly;
 
@@ -87,7 +98,8 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
     public bool IsRule => Entity.Kind == EntityKind.Rule;
     public bool SupportsMessages => IsQueue || IsSubscription;
     public bool SupportsSessions => SupportsMessages && Entity.RequiresSession;
-    public bool HasStatus => !IsRule && CanModify;
+    // Status changes go through the namespace-level command, so they need namespace management access.
+    public bool HasStatus => !IsRule && CanManage && !IsReadOnly;
     public string StatusButtonLabel => Entity.IsDisabled ? "Enable" : "Disable";
     public string InformationTitle => $"{Entity.Kind} Information";
 
@@ -298,12 +310,6 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
 
     private async Task LoadEditorAsync()
     {
-        if (!CanManage)
-        {
-            Editor = null;
-            return;
-        }
-
         try
         {
             var editor = await EntityEditorViewModel.EditAsync(_session.Entities, Entity);
@@ -315,11 +321,12 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
 
             Editor = editor;
             EditorError = null;
+            EntityManageable = !CanManage;
         }
         catch (Exception ex)
         {
             Editor = null;
-            EditorError = $"Could not read the settings of {Entity.Path}: {ErrorMessages.Describe(ex)}";
+            EditorError = CanManage ? $"Could not read the settings of {Entity.Path}: {ErrorMessages.Describe(ex)}" : null;
         }
     }
 
@@ -332,4 +339,6 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
     }
 
     private bool CanUpdate() => CanModify && Editor is { IsValid: true };
+
+    partial void OnEntityManageableChanged(bool value) => ToggleStatusCommand.NotifyCanExecuteChanged();
 }

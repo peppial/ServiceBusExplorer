@@ -35,7 +35,7 @@ public class LimitedAccessTests
         Assert.Equal(["orders", "billing"], folder.Children.Select(c => c.Name));
         Assert.Equal(EntityKind.Subscription, folder.Children[1].Entity!.Kind);
         Assert.False(vm.HasError);
-        Assert.Equal("No management access · 2 entities added by name", vm.LoadStatus);
+        Assert.Equal("No namespace management access · 2 entities added by name", vm.LoadStatus);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class LimitedAccessTests
         await vm.ConnectSavedCommand.ExecuteAsync(profile);
         await vm.Explorer!.AddEntityCommand.ExecuteAsync(null);
 
-        Assert.Contains(log.Entries, e => e.Message.Contains("without management access"));
+        Assert.Contains(log.Entries, e => e.Message.Contains("the namespace can't be listed with this credential"));
         Assert.Equal(["orders"], store.Profiles.Single().PinnedEntities);
         Assert.Equal(["orders"], vm.SavedConnections.Single().PinnedEntities);
     }
@@ -144,5 +144,53 @@ public class LimitedAccessTests
 
         Assert.True(editor.TestSucceeded);
         Assert.Contains("without management access", editor.TestResult);
+    }
+
+    [Fact]
+    public async Task A_key_scoped_to_one_queue_still_shows_and_edits_that_queue()
+    {
+        var entities = new FakeEntityService { Failure = new UnauthorizedAccessException("must not list") };
+        entities.Readable["test"] = FakeEntityService.Queue("test", active: 7, deadLetter: 1) with { MaxDeliveryCount = 4 };
+        entities.Definitions["test"] = new QueueDefinition { Name = "test", MaxDeliveryCount = 4 };
+        var session = new FakeSession(new ConnectionProfile { Name = "scoped" }, "contoso.servicebus.windows.net", entities)
+        {
+            CanManage = false,
+            ScopedEntity = "test",
+            LimitedReason = "Unauthorized access. 'Manage' claim(s) are required for this operation.",
+        };
+        var vm = new ExplorerViewModel(session, _dialogs);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Contains("is for 'test' only (it has EntityPath=test)", vm.LimitedNotice);
+        Assert.Contains("Service Bus said: Unauthorized access.", vm.LimitedNotice);
+        var node = vm.Roots[0].Children.Single();
+        Assert.Equal("test (7, 1)", node.DisplayName);
+
+        vm.SelectedNode = node;
+        var panel = vm.Details!;
+        await panel.EditorLoad;
+        Assert.True(panel.EntityManageable);
+        Assert.True(panel.CanModify);
+        Assert.False(panel.HasStatus);
+        panel.Editor!.MaxDeliveryCount = 6;
+        Assert.True(panel.UpdateCommand.CanExecute(null));
+        await panel.UpdateCommand.ExecuteAsync(null);
+        Assert.Equal(6, ((QueueDefinition)entities.Definitions["test"]).MaxDeliveryCount);
+    }
+
+    [Fact]
+    public async Task Entities_the_key_cannot_read_stay_as_plain_references()
+    {
+        var vm = Create("orders");
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedNode = vm.Roots[0].Children.Single();
+        await vm.Details!.EditorLoad;
+
+        Assert.Equal("orders", vm.Roots[0].Children.Single().DisplayName);
+        Assert.False(vm.Details.CanModify);
+        Assert.False(vm.Details.CanEditSettings);
+        Assert.Null(vm.Details.EditorError);
     }
 }

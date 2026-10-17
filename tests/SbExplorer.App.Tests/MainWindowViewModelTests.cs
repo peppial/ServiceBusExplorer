@@ -60,20 +60,39 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task Connect_dialog_can_connect_without_saving()
+    public async Task Connect_dialog_ok_saves_the_connection_by_default()
     {
-        _dialogs.OnConnectDialog = dialog =>
+        _dialogs.OnConnectDialog = async dialog =>
         {
             dialog.Editor.ConnectionString = ConnectionString;
-            dialog.OkCommand.Execute(null);
-            return Task.FromResult(true);
+            await dialog.OkCommand.ExecuteAsync(null);
+            return true;
+        };
+
+        await _vm.ConnectCommand.ExecuteAsync(null);
+
+        Assert.True(_vm.IsConnected);
+        var saved = Assert.Single(_store.Profiles);
+        Assert.Equal("orders.servicebus.windows.net", saved.Name);
+        Assert.Equal(ConnectionString, _secrets.Secrets[saved.SecretKey]);
+        Assert.Equal("orders.servicebus.windows.net", Assert.Single(_vm.SavedConnections).Name);
+    }
+
+    [Fact]
+    public async Task Connect_dialog_can_connect_without_saving()
+    {
+        _dialogs.OnConnectDialog = async dialog =>
+        {
+            dialog.Editor.ConnectionString = ConnectionString;
+            dialog.SaveOnConnect = false;
+            await dialog.OkCommand.ExecuteAsync(null);
+            return true;
         };
 
         await _vm.ConnectCommand.ExecuteAsync(null);
 
         Assert.True(_vm.IsConnected);
         Assert.Empty(_store.Profiles);
-        Assert.Equal("orders.servicebus.windows.net", _connector.Requests.Single().Profile.Name);
     }
 
     [Fact]

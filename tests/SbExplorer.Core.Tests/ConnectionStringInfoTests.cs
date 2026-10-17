@@ -69,4 +69,13 @@ public class ConnectionStringInfoTests
     [InlineData("Endpoint=sb://contoso.servicebus.windows.net/;SharedAccessKeyName=k;SharedAccessKey=v")]
     public void Leaves_other_connection_strings_alone(string connectionString) =>
         Assert.Equal(connectionString, ConnectionStringInfo.ForAdministration(connectionString));
+
+    [Theory]
+    [InlineData("Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=k;SharedAccessKey=v;EntityPath=test",
+        "Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=k;SharedAccessKey=v")]
+    [InlineData("Endpoint=sb://x/;entitypath=orders;SharedAccessKeyName=k;SharedAccessKey=a=b==",
+        "Endpoint=sb://x/;SharedAccessKeyName=k;SharedAccessKey=a=b==")]
+    [InlineData("Endpoint=sb://x/;SharedAccessKeyName=k;SharedAccessKey=v", "Endpoint=sb://x/;SharedAccessKeyName=k;SharedAccessKey=v")]
+    public void Without_entity_path_keeps_everything_else(string input, string expected) =>
+        Assert.Equal(expected, ConnectionStringInfo.WithoutEntityPath(input));
 }

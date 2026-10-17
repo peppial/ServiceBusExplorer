@@ -21,7 +21,7 @@
       <Button Content="Refresh" Command="{Binding RefreshCommand}" />
       <Button Content="{Binding StatusButtonLabel}" Command="{Binding ToggleStatusCommand}" IsVisible="{Binding HasStatus}" />
       <Button Content="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding CanManage}" />
-      <Button x:Name="UpdateButton" Content="Update" Command="{Binding UpdateCommand}" IsVisible="{Binding CanManage}" />
+      <Button x:Name="UpdateButton" Content="Update" Command="{Binding UpdateCommand}" IsVisible="{Binding CanEditSettings}" />
     </WrapPanel>
 
     <Border DockPanel.Dock="Top" Classes="notice" IsVisible="{Binding IsReadOnly}">
@@ -39,7 +39,7 @@
                 <TextBlock Text="{Binding EditorError}" Classes="error" TextWrapping="Wrap"
                            IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 <TextBlock Text="Settings can't be read or changed without the Manage claim." Opacity="0.7" TextWrapping="Wrap"
-                           IsVisible="{Binding !CanManage}" />
+                           IsVisible="{Binding !CanEditSettings}" />
               </Panel>
             </ScrollViewer>
             <HeaderedContentControl Grid.Column="2" Classes="group" Header="{Binding InformationTitle}" VerticalAlignment="Top">

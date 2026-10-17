@@ -48,6 +48,10 @@ public partial class ConnectDialogViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(OkCommand), nameof(SaveCommand))]
     private ConnectionEditorViewModel _editor;
 
+    /// <summary>OK also saves the connection (named after the namespace when no name is given).</summary>
+    [ObservableProperty]
+    private bool _saveOnConnect = true;
+
     [ObservableProperty]
     private string? _status;
 
@@ -128,10 +132,23 @@ public partial class ConnectDialogViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private void Ok()
+    private async Task OkAsync()
     {
         var profile = Editor.ToProfile();
-        Result = new ConnectRequest(profile, Editor.Secret, Profiles.Any(p => p.Id == profile.Id));
+        if (SaveOnConnect)
+        {
+            try
+            {
+                await _store.SaveAsync(profile, Editor.Secret);
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"Could not save: {ErrorMessages.Describe(ex)}", isError: true);
+                return;
+            }
+        }
+
+        Result = new ConnectRequest(profile, Editor.Secret, SaveOnConnect || Profiles.Any(p => p.Id == profile.Id));
         Confirmed?.Invoke(this, EventArgs.Empty);
     }
 

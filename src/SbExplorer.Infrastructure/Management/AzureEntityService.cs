@@ -54,6 +54,34 @@ public sealed class AzureEntityService(ServiceBusAdministrationClient administra
             .ToList();
     }
 
+    public async Task<EntityInfo> GetEntityAsync(EntityInfo reference, CancellationToken cancellationToken = default)
+    {
+        var parts = reference.Path.Split('/');
+        switch (reference.Kind)
+        {
+            case EntityKind.Queue:
+            {
+                var queue = administration.GetQueueAsync(reference.Name, cancellationToken);
+                var runtime = administration.GetQueueRuntimePropertiesAsync(reference.Name, cancellationToken);
+                return EntityMapper.Queue((await queue).Value, (await runtime).Value);
+            }
+            case EntityKind.Topic:
+            {
+                var topic = administration.GetTopicAsync(reference.Name, cancellationToken);
+                var runtime = administration.GetTopicRuntimePropertiesAsync(reference.Name, cancellationToken);
+                return EntityMapper.Topic((await topic).Value, (await runtime).Value);
+            }
+            case EntityKind.Subscription:
+            {
+                var subscription = administration.GetSubscriptionAsync(parts[0], reference.Name, cancellationToken);
+                var runtime = administration.GetSubscriptionRuntimePropertiesAsync(parts[0], reference.Name, cancellationToken);
+                return EntityMapper.Subscription((await subscription).Value, (await runtime).Value);
+            }
+            default:
+                return EntityMapper.Rule(parts[0], parts[2], (await administration.GetRuleAsync(parts[0], parts[2], reference.Name, cancellationToken)).Value);
+        }
+    }
+
     public async Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default) =>
         DefinitionMapper.ToDefinition((await administration.GetQueueAsync(name, cancellationToken)).Value);
 

@@ -58,9 +58,12 @@ public partial class ExplorerViewModel(
     /// <summary>Without the Manage claim, entities can't be listed and are added by name instead.</summary>
     public bool IsLimited => !session.CanManage;
 
-    public string? LimitedNotice => IsLimited
-        ? "Connected without management access, so queues and topics can't be listed. Add the queues or topic/subscriptions you want by name; messages work as far as the key's Listen and Send claims allow."
-        : null;
+    public string? LimitedNotice => !IsLimited
+        ? null
+        : (session.ScopedEntity is { } scoped
+            ? $"This connection string is for '{scoped}' only (it has EntityPath={scoped}), and its key can't list the rest of the namespace. For the full tree, use a namespace-level policy such as RootManageSharedAccessKey (Service Bus namespace > Shared access policies)."
+            : "This credential can't list the namespace, so add the queues or topic/subscriptions you want by name. Messages work as far as its Listen and Send rights allow.")
+          + (session.LimitedReason is { } reason ? $" Service Bus said: {reason}" : string.Empty);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages),
@@ -149,7 +152,7 @@ public partial class ExplorerViewModel(
         HasError = false;
         if (IsLimited)
         {
-            ShowPinnedEntities(selectedPath);
+            await ShowPinnedEntitiesAsync(selectedPath, cancellationToken);
             return;
         }
 
@@ -210,7 +213,7 @@ public partial class ExplorerViewModel(
             await SavePinnedAsync();
         }
 
-        ShowPinnedEntities(entity.Path);
+        await ShowPinnedEntitiesAsync(entity.Path);
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveEntity))]
@@ -219,7 +222,7 @@ public partial class ExplorerViewModel(
         var path = SelectedEntity!.Path;
         _pinned.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
         await SavePinnedAsync();
-        ShowPinnedEntities(selectedPath: null);
+        await ShowPinnedEntitiesAsync(selectedPath: null);
     }
 
     private bool CanRemoveEntity() =>
@@ -593,7 +596,7 @@ public partial class ExplorerViewModel(
     private bool HasManageableSelection() => CanModify && SelectedEntity is not null;
     private bool CanChangeStatus(EntityStatusValue status) => HasManageableSelection() && SelectedEntity!.Kind != EntityKind.Rule;
 
-    private void ShowPinnedEntities(string? selectedPath)
+    private async Task ShowPinnedEntitiesAsync(string? selectedPath, CancellationToken cancellationToken = default)
     {
         var paths = new List<string>();
         if (session.ScopedEntity is { } scoped)
@@ -602,10 +605,14 @@ public partial class ExplorerViewModel(
         }
 
         paths.AddRange(_pinned.Where(p => !paths.Contains(p, StringComparer.OrdinalIgnoreCase)));
-        var nodes = paths
-            .Select(p => EntityReference.TryParse(p, out var entity, out _) ? new EntityNodeViewModel(entity!) : null)
-            .OfType<EntityNodeViewModel>()
+        var references = paths
+            .Select(p => EntityReference.TryParse(p, out var entity, out _) ? entity : null)
+            .OfType<EntityInfo>()
             .ToList();
+
+        // A key scoped to one entity can still read that entity's settings and counts, just not list others.
+        var entities = await Task.WhenAll(references.Select(r => DescribeAsync(r, cancellationToken)));
+        var nodes = entities.Select(e => new EntityNodeViewModel(e)).ToList();
 
         _pinnedFolder.SetChildren(nodes);
         _pinnedFolder.IsExpanded = true;
@@ -613,8 +620,33 @@ public partial class ExplorerViewModel(
         SelectedNode = nodes.FirstOrDefault(n => string.Equals(n.Entity.Path, selectedPath, StringComparison.OrdinalIgnoreCase));
         LoadStatus = nodes.Count == 0
             ? "No management access: add a queue or topic/subscription by name."
-            : $"No management access · {Plural(nodes.Count, "entity added by name", "entities added by name")}";
+            : $"No namespace management access · {Plural(nodes.Count, "entity added by name", "entities added by name")}";
         HasError = false;
+    }
+
+    /// <summary>The entity's full details when the key allows reading it; a bare reference otherwise.</summary>
+    private async Task<EntityInfo> DescribeAsync(EntityInfo reference, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _entities.GetEntityAsync(reference, cancellationToken);
+        }
+        catch (Exception) when (reference.Kind == EntityKind.Queue)
+        {
+            // A bare name could be a topic as well as a queue.
+            try
+            {
+                return await _entities.GetEntityAsync(reference with { Kind = EntityKind.Topic }, cancellationToken);
+            }
+            catch (Exception)
+            {
+                return reference;
+            }
+        }
+        catch (Exception)
+        {
+            return reference;
+        }
     }
 
     private Task SavePinnedAsync() => savePinnedEntities?.Invoke(_pinned.ToList()) ?? Task.CompletedTask;

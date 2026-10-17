@@ -32,6 +32,14 @@ public sealed record ConnectionStringInfo(
         return connectionString.Replace(info.Endpoint, managementEndpoint, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The connection string without its EntityPath, so clients aren't tied to one entity. The key's own scope
+    /// (namespace or entity policy) still decides what it may access.
+    /// </summary>
+    public static string WithoutEntityPath(string connectionString) =>
+        string.Join(';', connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(segment => !segment.StartsWith("EntityPath=", StringComparison.OrdinalIgnoreCase)));
+
     public static bool TryParse(string? connectionString, out ConnectionStringInfo? info, out string? error)
     {
         info = null;

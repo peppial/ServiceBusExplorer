@@ -26,4 +26,20 @@ public class ConnectorTests
         await Assert.ThrowsAsync<ArgumentException>(() =>
             new AzureNamespaceConnector().ConnectAsync(profile, "nonsense", TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task Entity_path_in_the_connection_string_does_not_lock_the_session_to_that_entity()
+    {
+        Emulator.SkipIfNotRunning();
+        var profile = new ConnectionProfile { Name = "Emulator" };
+
+        await using var session = await new AzureNamespaceConnector()
+            .ConnectAsync(profile, Emulator.ConnectionString + "EntityPath=sbx-tests;", TestContext.Current.CancellationToken);
+
+        Assert.True(session.CanManage);
+        Assert.Equal("sbx-tests", session.ScopedEntity);
+        Assert.Null(session.LimitedReason);
+        // Before, the client kept EntityPath and refused every other entity.
+        await session.Messages.PeekAsync(SbExplorer.Core.Messaging.MessageSource.ForQueue("orders"), 1, cancellationToken: TestContext.Current.CancellationToken);
+    }
 }

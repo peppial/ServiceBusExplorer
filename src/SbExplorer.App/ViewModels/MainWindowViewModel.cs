@@ -176,7 +176,9 @@ public partial class MainWindowViewModel(
             _isSavedConnection = isSaved;
             log.Info(Session.CanManage
                 ? $"Connected to sb://{Session.FullyQualifiedNamespace}/."
-                : $"Connected to sb://{Session.FullyQualifiedNamespace}/ without management access (the credential has no Manage claim).");
+                : $"Connected to sb://{Session.FullyQualifiedNamespace}/, but the namespace can't be listed with this credential"
+                  + (Session.ScopedEntity is { } scoped ? $" (the connection string is scoped to '{scoped}')" : string.Empty)
+                  + (Session.LimitedReason is { } reason ? $". Service Bus said: {reason}" : "."));
             if (profile.ReadOnly)
             {
                 log.Info("Read-only connection: messages and entities can be browsed and peeked but not changed.");

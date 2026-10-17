@@ -33,12 +33,12 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
         }
         catch (Exception ex) when (IsAccessDenied(ex))
         {
-            // A Listen- or Send-only key, or an Entra data role, can't use the management API.
-            // Keep the session for messaging, verified against the scoped entity when there is one.
+            // A Listen- or Send-only key, a key scoped to one entity, or an Entra data role can't list the
+            // namespace. Keep the session, verified against the scoped entity when there is one.
             try
             {
                 await VerifyDataAccessAsync(session, cancellationToken);
-                return session.WithoutManagement();
+                return session.WithoutManagement(Describe(ex));
             }
             catch
             {
@@ -77,6 +77,20 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
         }
     }
 
+    // Service Bus's answer, without the tracking ids and stack it is usually followed by.
+    private static string Describe(Exception ex)
+    {
+        var inner = ex;
+        while (inner is AggregateException { InnerExceptions.Count: > 0 } aggregate)
+        {
+            inner = aggregate.InnerExceptions[0];
+        }
+
+        var message = inner.Message.Split('\n', 2)[0].Trim();
+        var tracking = message.IndexOf("TrackingId", StringComparison.OrdinalIgnoreCase);
+        return (tracking > 0 ? message[..tracking] : message).Trim().TrimEnd('.', ',') + ".";
+    }
+
     internal static bool IsAccessDenied(Exception ex) => ex switch
     {
         UnauthorizedAccessException => true,
@@ -92,13 +106,16 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
             throw new ArgumentException(error, nameof(secret));
         }
 
+        // EntityPath only says which entity the string was copied from; clients built with it can't reach any
+        // other entity even when the key could, so it's kept as ScopedEntity and left out of the clients.
+        var unscoped = ConnectionStringInfo.WithoutEntityPath(secret!);
         return new AzureNamespaceSession(
             profile,
             info!.FullyQualifiedNamespace,
             info.UseDevelopmentEmulator,
             info.EntityPath,
-            new ServiceBusClient(secret),
-            new ServiceBusAdministrationClient(ConnectionStringInfo.ForAdministration(secret!)));
+            new ServiceBusClient(unscoped),
+            new ServiceBusAdministrationClient(ConnectionStringInfo.ForAdministration(unscoped)));
     }
 
     private static AzureNamespaceSession CreateFromEntra(ConnectionProfile profile)
@@ -127,13 +144,15 @@ public sealed class AzureNamespaceSession(
     string? ScopedEntity,
     ServiceBusClient client,
     ServiceBusAdministrationClient administration,
-    bool CanManage = true) : INamespaceSession
+    bool CanManage = true,
+    string? LimitedReason = null) : INamespaceSession
 {
     public ConnectionProfile Profile { get; } = profile;
     public string FullyQualifiedNamespace { get; } = fullyQualifiedNamespace;
     public bool IsEmulator { get; } = IsEmulator;
     public bool CanManage { get; } = CanManage;
     public string? ScopedEntity { get; } = ScopedEntity;
+    public string? LimitedReason { get; } = LimitedReason;
     public ServiceBusClient Client { get; } = client;
     public ServiceBusAdministrationClient Administration { get; } = administration;
     // A read-only profile gets services that refuse every change, whatever the UI allows.
@@ -145,8 +164,8 @@ public sealed class AzureNamespaceSession(
         ? new ReadOnlyMessageService(new AzureMessageService(client))
         : new AzureMessageService(client);
 
-    public AzureNamespaceSession WithoutManagement() =>
-        new(Profile, FullyQualifiedNamespace, IsEmulator, ScopedEntity, Client, Administration, CanManage: false);
+    public AzureNamespaceSession WithoutManagement(string reason) =>
+        new(Profile, FullyQualifiedNamespace, IsEmulator, ScopedEntity, Client, Administration, CanManage: false, LimitedReason: reason);
 
     public ValueTask DisposeAsync() => Client.DisposeAsync();
 }
