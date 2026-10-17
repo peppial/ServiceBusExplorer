@@ -78,6 +78,25 @@ public sealed record OutgoingMessage
     public static readonly IReadOnlySet<string> DeadLetterProperties =
         new HashSet<string>(StringComparer.Ordinal) { "DeadLetterReason", "DeadLetterErrorDescription" };
 
+    /// <summary>Application property that records which message a resubmitted copy came from.</summary>
+    public const string OriginalMessageIdProperty = "OriginalMessageId";
+
+    /// <summary>
+    /// A copy for resubmitting a dead-lettered message. It gets a new MessageId: with duplicate detection on, the
+    /// broker would otherwise drop the copy as a duplicate while the original is removed, losing the message.
+    /// </summary>
+    public static OutgoingMessage ResubmitCopyOf(MessageInfo message)
+    {
+        var copy = CopyOf(message);
+        var properties = new Dictionary<string, object?>(copy.ApplicationProperties);
+        if (!string.IsNullOrEmpty(message.MessageId))
+        {
+            properties[OriginalMessageIdProperty] = message.MessageId;
+        }
+
+        return copy with { MessageId = Guid.NewGuid().ToString("N"), ApplicationProperties = properties };
+    }
+
     /// <summary>A copy of a received message ready to send again, without broker-assigned or dead-letter state.</summary>
     public static OutgoingMessage CopyOf(MessageInfo message) => new()
     {

@@ -42,7 +42,7 @@
           </Expander.Header>
           <DockPanel>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-              <Button Content="Reload" Command="{Binding LoadStateCommand}" />
+              <Button Content="Load State" Command="{Binding LoadStateCommand}" />
               <Button Content="Save state" Command="{Binding SaveStateCommand}" />
               <Button Content="Clear state…" Command="{Binding ClearStateCommand}" />
             </StackPanel>

@@ -46,23 +46,15 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     }
 
     /// <summary>
-    /// Peeks one session through a session receiver. If a consumer holds the session lock, scans the entity
-    /// without locking instead, which only finds messages within the first <see cref="MaxScan"/>.
+    /// Peeks one session without accepting it: accepting takes the session lock, which a live consumer could be
+    /// waiting for. Messages are found by scanning the entity, so only the first <see cref="MaxScan"/> are searched.
     /// </summary>
     private async Task<IReadOnlyList<MessageInfo>> PeekSessionAsync(
         MessageSource source, int maxMessages, long? fromSequenceNumber, CancellationToken cancellationToken)
     {
-        try
-        {
-            await using var session = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
-            return await PeekPagesAsync(session, maxMessages, fromSequenceNumber, cancellationToken);
-        }
-        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.SessionCannotBeLocked)
-        {
-            await using var receiver = await OpenReceiverAsync(source with { SessionId = null }, ServiceBusReceiveMode.PeekLock, cancellationToken);
-            var scanned = await PeekPagesAsync(receiver, MaxScan, fromSequenceNumber, cancellationToken);
-            return scanned.Where(m => m.SessionId == source.SessionId).Take(maxMessages).ToList();
-        }
+        await using var receiver = await OpenReceiverAsync(source with { SessionId = null }, ServiceBusReceiveMode.PeekLock, cancellationToken);
+        var scanned = await PeekPagesAsync(receiver, MaxScan, fromSequenceNumber, cancellationToken);
+        return scanned.Where(m => m.SessionId == source.SessionId).Take(maxMessages).ToList();
     }
 
     public async Task<IReadOnlyList<MessageInfo>> ReceiveAndDeleteAsync(
@@ -180,22 +172,36 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
         await sender.CancelScheduledMessagesAsync(sequenceNumbers, cancellationToken);
     }
 
-    public async Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<long> PurgeAsync(
+        MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default, DateTimeOffset? enqueuedBefore = null)
     {
-        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.ReceiveAndDelete, cancellationToken, PurgeBatch);
+        // On a live entity new messages keep arriving. Receive-and-delete would delete them before we could see
+        // them, so messages are locked, only those enqueued before the purge began are completed, and the first
+        // newer one ends the purge (it and the rest of its batch are abandoned straight back).
+        var cutoff = enqueuedBefore ?? DateTimeOffset.UtcNow;
+        await using var receiver = await OpenReceiverAsync(source, ServiceBusReceiveMode.PeekLock, cancellationToken);
         long purged = 0;
         var wait = TimeSpan.FromSeconds(5);
         while (true)
         {
-            // Bodies aren't needed, so nothing is mapped; only the count matters.
             var batch = await receiver.ReceiveMessagesAsync(PurgeBatch, wait, cancellationToken);
             if (batch.Count == 0)
             {
                 return purged;
             }
 
-            purged += batch.Count;
+            var old = batch.Where(m => m.EnqueuedTime <= cutoff).ToList();
+            var newer = batch.Where(m => m.EnqueuedTime > cutoff).ToList();
+            await Task.WhenAll(old.Select(m => receiver.CompleteMessageAsync(m, cancellationToken)));
+            purged += old.Count;
             progress?.Report(purged);
+
+            if (newer.Count > 0)
+            {
+                await Task.WhenAll(newer.Select(m => receiver.AbandonMessageAsync(m, cancellationToken: CancellationToken.None)));
+                return purged;
+            }
+
             wait = TimeSpan.FromSeconds(2);
         }
     }
@@ -220,7 +226,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
             sequenceNumbers,
             message =>
             {
-                var copy = OutgoingMessage.CopyOf(MessageMapper.ToInfo(message, isLocked: false));
+                var copy = OutgoingMessage.ResubmitCopyOf(MessageMapper.ToInfo(message, isLocked: false));
                 return sender.SendMessageAsync(MessageMapper.ToServiceBusMessage(copy), cancellationToken);
             },
             cancellationToken);
@@ -300,6 +306,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
     public async Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
     {
         long purged = 0;
+        var cutoff = DateTimeOffset.UtcNow;
         var plain = source with { SessionId = null };
         while (true)
         {
@@ -318,7 +325,7 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
             var before = purged;
             foreach (var sessionId in sessions)
             {
-                purged += await PurgeAsync(plain.ForSession(sessionId), new Progress<long>(n => progress?.Report(purged + n)), cancellationToken);
+                purged += await PurgeAsync(plain.ForSession(sessionId), new Progress<long>(n => progress?.Report(purged + n)), cancellationToken, cutoff);
                 progress?.Report(purged);
             }
 

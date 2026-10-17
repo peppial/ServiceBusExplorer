@@ -146,6 +146,13 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private string? _lockedUntil;
 
     public bool HasLockedMessages => LockedCount > 0;
+
+    /// <summary>Why locks matter on a live entity: each release or expired lock counts as a delivery.</summary>
+    public string LockWarning => IsDeadLetterView
+        ? "Releasing or letting a lock expire puts the message back in the dead-letter queue."
+        : Entity.MaxDeliveryCount is { } max
+            ? $"Releasing, abandoning or letting a lock expire counts as a delivery; after {max} deliveries Service Bus dead-letters the message. Consumers can't receive locked messages until you settle or release them."
+            : "Releasing, abandoning or letting a lock expire counts as a delivery. Consumers can't receive locked messages until you settle or release them.";
     public bool HasMoreToPeek { get; private set; }
     public string? SelectionSummary => SelectedRows.Count > 1 ? $"{SelectedRows.Count} selected" : null;
 
@@ -315,6 +322,14 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        // With duplicate detection the broker drops a copy that reuses the MessageId; deleting the original then
+        // would lose the message, so it stays in the dead-letter queue.
+        if (!string.IsNullOrEmpty(row.Message.MessageId) && string.Equals(sender.MessageId.Trim(), row.Message.MessageId, StringComparison.Ordinal))
+        {
+            SetStatus($"Sent the edited message to {Source.SendTarget}. The original {row.SequenceNumber} was kept because the copy reuses its MessageId, which duplicate detection may drop; delete it once the copy has arrived.");
+            return;
+        }
+
         await RunAsync(async () =>
         {
             var deleted = await _service.DeleteAsync(Source, [row.SequenceNumber], cancellationToken);
@@ -349,7 +364,9 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private async Task PurgeAsync(CancellationToken cancellationToken)
     {
         var target = PurgesAllSessions ? $"every session of {Source.EntityPath}" : SourceLabel;
-        if (!await _dialogs.ConfirmAsync("Purge", $"Permanently delete every message in {target}? This can't be undone.", "Purge"))
+        if (!await _dialogs.ConfirmAsync("Purge",
+                $"Permanently delete every message in {target} that was enqueued before now? Messages that arrive while the purge runs are kept. This can't be undone.",
+                "Purge"))
         {
             return;
         }
@@ -562,7 +579,9 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanResubmit() => IsDeadLetterView && HasUnlockedSelection();
     private bool CanEditAndResubmit() => IsDeadLetterView && !HasLockedMessages && SelectedMessage is not null;
-    private bool CanDelete() => CanReceive && HasUnlockedSelection();
+    // Only dead-letter queues: finding selected messages in a live queue means locking (and so re-delivering)
+    // every message ahead of them, taking them from consumers and raising their delivery counts.
+    private bool CanDelete() => IsDeadLetterView && CanReceive && HasUnlockedSelection();
     private bool CanPurge() => (CanReceive || PurgesAllSessions) && CanBrowse && !HasLockedMessages;
 
     private string KindName => Entity.Kind == EntityKind.Subscription ? "subscription" : "queue";

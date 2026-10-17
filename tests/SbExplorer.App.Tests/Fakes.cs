@@ -402,7 +402,8 @@ internal sealed class FakeMessageService : IMessageService
         return Task.CompletedTask;
     }
 
-    public Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    public Task<long> PurgeAsync(
+        MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default, DateTimeOffset? enqueuedBefore = null)
     {
         var doomed = InSource(source).ToList();
         Messages(Key(source)).RemoveAll(doomed.Contains);
@@ -416,7 +417,7 @@ internal sealed class FakeMessageService : IMessageService
     public Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
     {
         PurgeAllSessionsCalls++;
-        return PurgeAsync(source, progress, cancellationToken);
+        return PurgeAsync(source, progress, cancellationToken, null);
     }
 
     public Task<ReadOnlyMemory<byte>?> GetSessionStateAsync(MessageSource source, CancellationToken cancellationToken = default) =>

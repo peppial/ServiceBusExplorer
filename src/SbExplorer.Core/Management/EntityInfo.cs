@@ -33,6 +33,9 @@ public sealed record EntityInfo
     public string Status { get; init; } = "Active";
     public MessageCounts? Counts { get; init; }
     public bool RequiresSession { get; init; }
+
+    /// <summary>Deliveries before Service Bus dead-letters a message (queues and subscriptions).</summary>
+    public int? MaxDeliveryCount { get; init; }
     public string? ForwardTo { get; init; }
     public IReadOnlyList<EntityProperty> Properties { get; init; } = [];
 

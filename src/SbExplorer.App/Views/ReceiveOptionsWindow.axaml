@@ -13,6 +13,8 @@
         <RadioButton GroupName="mode" Content="Receive and Delete" IsChecked="{Binding IsReceiveAndDelete}" IsEnabled="{Binding CanReceive}" />
         <RadioButton GroupName="mode" Content="Receive and Lock (complete, abandon, defer or dead-letter afterwards)"
                      IsChecked="{Binding IsReceiveLocked}" IsEnabled="{Binding CanReceive}" />
+        <TextBlock Classes="error" Text="{Binding ModeWarning}" TextWrapping="Wrap" Margin="0,4,0,0"
+                   IsVisible="{Binding ModeWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
     </HeaderedContentControl>
     <HeaderedContentControl Classes="group" Header="Messages">

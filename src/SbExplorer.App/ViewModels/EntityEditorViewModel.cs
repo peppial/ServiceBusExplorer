@@ -15,6 +15,10 @@ public partial class KeyValueRowViewModel : ObservableObject
 
     [ObservableProperty]
     private string _value = string.Empty;
+
+    /// <summary>A correlation filter matches values of the same type only: Int32 5 is not String "5".</summary>
+    [ObservableProperty]
+    private SbExplorer.Core.Messaging.PropertyValueType _type = SbExplorer.Core.Messaging.PropertyValueType.String;
 }
 
 public sealed record FilterKindOption(RuleFilterKind Kind, string Label);
@@ -84,6 +88,18 @@ public partial class EntityEditorViewModel : ObservableObject
     });
 
     public IReadOnlyList<EntityStatusValue> Statuses { get; } = Enum.GetValues<EntityStatusValue>();
+
+    public IReadOnlyList<SbExplorer.Core.Messaging.PropertyValueType> PropertyTypes { get; } =
+        Enum.GetValues<SbExplorer.Core.Messaging.PropertyValueType>();
+
+    // Not editable here, but kept so saving a rule doesn't drop the values its @placeholders need.
+    private IReadOnlyDictionary<string, TypedValue> _sqlParameters = new Dictionary<string, TypedValue>();
+    private IReadOnlyDictionary<string, TypedValue> _actionParameters = new Dictionary<string, TypedValue>();
+
+    /// <summary>Shown when the rule has parameters the form can't edit.</summary>
+    public string? ParametersNote => _sqlParameters.Count + _actionParameters.Count == 0
+        ? null
+        : $"Parameters kept as they are: {string.Join(", ", _sqlParameters.Concat(_actionParameters).Select(p => $"{p.Key} = {p.Value.Value} ({p.Value.Type})"))}";
 
     public IReadOnlyList<FilterKindOption> FilterKinds { get; } =
     [
@@ -328,6 +344,12 @@ public partial class EntityEditorViewModel : ObservableObject
                     return "Every correlation property needs a name.";
                 }
 
+                if (IsCorrelationFilter && RuleProperties.FirstOrDefault(p =>
+                        !SbExplorer.Core.Messaging.PropertyValues.TryParse(p.Value, p.Type, out _, out _)) is { } bad)
+                {
+                    return $"{bad.Key}: '{bad.Value}' is not a valid {bad.Type}.";
+                }
+
                 if (IsCorrelationFilter && !BuildRule().HasCorrelationCriteria)
                 {
                     return "A correlation filter needs at least one field or property to match.";
@@ -457,7 +479,12 @@ public partial class EntityEditorViewModel : ObservableObject
         Properties = IsCorrelationFilter
             ? RuleProperties.Where(p => !string.IsNullOrWhiteSpace(p.Key)).GroupBy(p => p.Key.Trim()).ToDictionary(g => g.Key, g => g.Last().Value)
             : new Dictionary<string, string>(),
+        PropertyTypes = IsCorrelationFilter
+            ? RuleProperties.Where(p => !string.IsNullOrWhiteSpace(p.Key)).GroupBy(p => p.Key.Trim()).ToDictionary(g => g.Key, g => g.Last().Type)
+            : new Dictionary<string, SbExplorer.Core.Messaging.PropertyValueType>(),
+        SqlParameters = IsSqlFilter ? _sqlParameters : new Dictionary<string, TypedValue>(),
         ActionSqlExpression = Blank(ActionSqlExpression),
+        ActionParameters = string.IsNullOrWhiteSpace(ActionSqlExpression) ? new Dictionary<string, TypedValue>() : _actionParameters,
     };
 
     /// <summary>Service Bus naming rules; queue and topic names may contain '/' to form a path.</summary>
@@ -559,10 +586,13 @@ public partial class EntityEditorViewModel : ObservableObject
         CorrelationContentType = r.ContentType ?? string.Empty;
         foreach (var (key, value) in r.Properties)
         {
-            RuleProperties.Add(new KeyValueRowViewModel { Key = key, Value = value });
+            RuleProperties.Add(new KeyValueRowViewModel { Key = key, Value = value, Type = r.PropertyTypes.GetValueOrDefault(key) });
         }
 
         ActionSqlExpression = r.ActionSqlExpression ?? string.Empty;
+        _sqlParameters = r.SqlParameters;
+        _actionParameters = r.ActionParameters;
+        OnPropertyChanged(nameof(ParametersNote));
     }
 
     private long? MaxMessageKb() =>

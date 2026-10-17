@@ -45,11 +45,14 @@
 
     <Border DockPanel.Dock="Top" Classes="locked" IsVisible="{Binding HasLockedMessages}" Margin="0,0,0,6">
       <Grid ColumnDefinitions="*,Auto">
-        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
-          <Run Text="{Binding LockedCount}" FontWeight="SemiBold" />
-          <Run Text="locked message(s); the first lock expires at" />
-          <Run Text="{Binding LockedUntil}" FontWeight="SemiBold" />
-        </TextBlock>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock TextWrapping="Wrap">
+            <Run Text="{Binding LockedCount}" FontWeight="SemiBold" />
+            <Run Text="locked message(s); the first lock expires at" />
+            <Run Text="{Binding LockedUntil}" FontWeight="SemiBold" />
+          </TextBlock>
+          <TextBlock Classes="hint" Text="{Binding LockWarning}" TextWrapping="Wrap" />
+        </StackPanel>
         <WrapPanel Grid.Column="1" ItemSpacing="6">
           <Button Content="Complete" Command="{Binding CompleteCommand}" />
           <Button Content="Abandon" Command="{Binding AbandonCommand}" />
@@ -93,7 +96,7 @@
               <MenuItem Header="Save Selected Message Text as File" Command="{Binding Detail.SaveBodyCommand, FallbackValue={x:Null}}" />
               <MenuItem Header="Copy Selected Message Text" Command="{Binding Detail.CopyBodyCommand, FallbackValue={x:Null}}" />
               <Separator />
-              <MenuItem Header="Delete Selected Messages" Command="{Binding DeleteCommand}" />
+              <MenuItem Header="Delete Selected Messages" Command="{Binding DeleteCommand}" IsVisible="{Binding IsDeadLetterView}" />
               <MenuItem Header="Purge" Command="{Binding PurgeCommand}" />
             </ContextMenu>
           </TableView.ContextMenu>

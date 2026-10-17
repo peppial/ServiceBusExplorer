@@ -58,6 +58,7 @@ public static class EntityMapper
             Status = queue.Status.ToString(),
             Counts = counts,
             RequiresSession = queue.RequiresSession,
+            MaxDeliveryCount = queue.MaxDeliveryCount,
             ForwardTo = EntityName(queue.ForwardTo),
             Properties = properties,
         };
@@ -141,6 +142,7 @@ public static class EntityMapper
             Status = subscription.Status.ToString(),
             Counts = counts,
             RequiresSession = subscription.RequiresSession,
+            MaxDeliveryCount = subscription.MaxDeliveryCount,
             ForwardTo = EntityName(subscription.ForwardTo),
             Properties = properties,
         };

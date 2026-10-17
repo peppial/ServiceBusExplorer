@@ -1,5 +1,6 @@
 using Azure.Messaging.ServiceBus.Administration;
 using SbExplorer.Core.Management;
+using SbExplorer.Core.Messaging;
 
 namespace SbExplorer.Infrastructure.Management;
 
@@ -216,10 +217,12 @@ public static class DefinitionMapper
 
     public static RuleDefinition ToDefinition(RuleProperties rule)
     {
+        var action = rule.Action as SqlRuleAction;
         var definition = new RuleDefinition
         {
             Name = rule.Name,
-            ActionSqlExpression = NullIfEmpty((rule.Action as SqlRuleAction)?.SqlExpression),
+            ActionSqlExpression = NullIfEmpty(action?.SqlExpression),
+            ActionParameters = action?.Parameters.ToDictionary(p => p.Key, p => TypedValue.From(p.Value)) ?? new Dictionary<string, TypedValue>(),
         };
 
         // TrueRuleFilter and FalseRuleFilter derive from SqlRuleFilter, so they are matched first.
@@ -227,7 +230,12 @@ public static class DefinitionMapper
         {
             TrueRuleFilter => definition with { FilterKind = RuleFilterKind.True },
             FalseRuleFilter => definition with { FilterKind = RuleFilterKind.False },
-            SqlRuleFilter sql => definition with { FilterKind = RuleFilterKind.Sql, SqlExpression = sql.SqlExpression },
+            SqlRuleFilter sql => definition with
+            {
+                FilterKind = RuleFilterKind.Sql,
+                SqlExpression = sql.SqlExpression,
+                SqlParameters = sql.Parameters.ToDictionary(p => p.Key, p => TypedValue.From(p.Value)),
+            },
             CorrelationRuleFilter c => definition with
             {
                 FilterKind = RuleFilterKind.Correlation,
@@ -239,7 +247,8 @@ public static class DefinitionMapper
                 ReplyTo = NullIfEmpty(c.ReplyTo),
                 ReplyToSessionId = NullIfEmpty(c.ReplyToSessionId),
                 ContentType = NullIfEmpty(c.ContentType),
-                Properties = c.ApplicationProperties.ToDictionary(p => p.Key, p => p.Value?.ToString() ?? string.Empty),
+                Properties = c.ApplicationProperties.ToDictionary(p => p.Key, p => PropertyValues.Format(p.Value)),
+                PropertyTypes = c.ApplicationProperties.ToDictionary(p => p.Key, p => PropertyValues.TypeOf(p.Value)),
             },
             _ => definition with { FilterKind = RuleFilterKind.True },
         };
@@ -267,17 +276,39 @@ public static class DefinitionMapper
                 };
                 foreach (var (key, value) in d.Properties)
                 {
-                    filter.ApplicationProperties[key] = value;
+                    filter.ApplicationProperties[key] = Typed(value, d.PropertyTypes.GetValueOrDefault(key));
                 }
 
                 return filter;
             default:
-                return new SqlRuleFilter(d.SqlExpression ?? "1=1");
+                var sql = new SqlRuleFilter(d.SqlExpression ?? "1=1");
+                foreach (var (key, value) in d.SqlParameters)
+                {
+                    sql.Parameters[key] = value.ToObject();
+                }
+
+                return sql;
         }
     }
 
-    public static RuleAction? ToAction(RuleDefinition d) =>
-        string.IsNullOrWhiteSpace(d.ActionSqlExpression) ? null : new SqlRuleAction(d.ActionSqlExpression);
+    public static RuleAction? ToAction(RuleDefinition d)
+    {
+        if (string.IsNullOrWhiteSpace(d.ActionSqlExpression))
+        {
+            return null;
+        }
+
+        var action = new SqlRuleAction(d.ActionSqlExpression);
+        foreach (var (key, value) in d.ActionParameters)
+        {
+            action.Parameters[key] = value.ToObject();
+        }
+
+        return action;
+    }
+
+    private static object? Typed(string value, PropertyValueType type) =>
+        PropertyValues.TryParse(value, type, out var parsed, out _) ? parsed : value;
 
     public static CreateRuleOptions ToCreateOptions(RuleDefinition d) => new(d.Name, ToFilter(d)) { Action = ToAction(d) };
 

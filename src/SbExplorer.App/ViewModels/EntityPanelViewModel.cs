@@ -255,7 +255,8 @@ public partial class EntityPanelViewModel : ObservableObject, IAsyncDisposable
             SubQueueKind.TransferDeadLetter => Entity.Counts?.TransferDeadLetter,
             _ => Entity.Counts?.Active,
         };
-        var options = new ReceiveOptionsViewModel($"Retrieve messages from {where}", target.CanReceive, count);
+        var options = new ReceiveOptionsViewModel($"Retrieve messages from {where}", target.CanReceive, count,
+            subQueue == SubQueueKind.None ? Entity.MaxDeliveryCount : null);
         if (!await _dialogs.ShowReceiveOptionsAsync(options))
         {
             return;

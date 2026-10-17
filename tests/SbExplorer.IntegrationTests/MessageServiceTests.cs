@@ -135,7 +135,8 @@ public sealed class MessageServiceTests : IAsyncLifetime
 
         Assert.Equal([r1], done);
         var back = Assert.Single(await Messages.PeekAsync(Queue, 10, cancellationToken: Ct));
-        Assert.Equal("r1", back.MessageId);
+        Assert.NotEqual("r1", back.MessageId);
+        Assert.Equal("r1", back.ApplicationProperties[OutgoingMessage.OriginalMessageIdProperty]);
         Assert.Equal("v", back.ApplicationProperties["k"]);
         Assert.False(back.ApplicationProperties.ContainsKey("DeadLetterReason"));
         Assert.Equal("r2", Assert.Single(await Messages.PeekAsync(DeadLetters, 10, cancellationToken: Ct)).MessageId);

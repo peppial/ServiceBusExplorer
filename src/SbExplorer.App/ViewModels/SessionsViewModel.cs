@@ -187,17 +187,9 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
             return;
         }
 
-        // Load quietly so the "found N sessions" status stays visible; only failures are reported.
-        try
-        {
-            ShowState(await service.GetSessionStateAsync(EntitySource.ForSession(value.SessionId)));
-        }
-        catch (Exception ex)
-        {
-            Status = $"Could not load the state of session '{value.SessionId}': {ErrorMessages.Describe(ex)}";
-            HasError = true;
-        }
-
+        // Reading session state means accepting (locking) the session, which a live consumer may be waiting for,
+        // so it only happens when asked for with Load State. Peeking the session's messages doesn't lock it.
+        StateSummary = "Not loaded — Load State locks the session briefly";
         if (Messages is { } messages && messages.Messages.Count == 0 && messages.PeekCommand.CanExecute(null))
         {
             await messages.PeekCommand.ExecuteAsync(null);

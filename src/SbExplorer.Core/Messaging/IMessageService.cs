@@ -24,8 +24,13 @@ public interface IMessageService
     /// <summary>Cancels scheduled messages on a queue or topic.</summary>
     Task CancelScheduledAsync(string entityName, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes every message in the source (or in its one session); reports the running total.</summary>
-    Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Deletes the messages in the source (or in its one session) that were enqueued before
+    /// <paramref name="enqueuedBefore"/> (default: now), so messages arriving during the purge survive.
+    /// Reports the running total.
+    /// </summary>
+    Task<long> PurgeAsync(
+        MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default, DateTimeOffset? enqueuedBefore = null);
 
     /// <summary>Deletes every message in every session of a session-enabled entity, one session at a time.</summary>
     Task<long> PurgeAllSessionsAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default);

@@ -37,7 +37,8 @@ public class EntityServiceTests
         var rules = await session.Entities.GetRulesAsync("events", "high-priority", ct);
 
         Assert.Contains(topics, t => t.Name == "events");
-        Assert.Equal(["all-events", "billing", "high-priority"], subscriptions.Select(s => s.Name));
+        // Subscriptions created while trying the app may exist too; only the configured ones are required.
+        Assert.Subset(subscriptions.Select(s => s.Name).ToHashSet(), new HashSet<string> { "all-events", "billing", "high-priority" });
         Assert.Equal("audit", subscriptions.Single(s => s.Name == "billing").ForwardTo);
         Assert.Contains(rules.Single(r => r.Name == "priority-high").Properties, p => p is { Name: "Expression", Value: "priority = 'high'" });
     }

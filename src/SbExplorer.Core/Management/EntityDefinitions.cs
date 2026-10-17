@@ -84,6 +84,14 @@ public enum RuleFilterKind
     False,
 }
 
+/// <summary>A rule parameter or property value with its type, as stored in definitions and export files.</summary>
+public sealed record TypedValue(string Value, Messaging.PropertyValueType Type = Messaging.PropertyValueType.String)
+{
+    public static TypedValue From(object? value) => new(Messaging.PropertyValues.Format(value), Messaging.PropertyValues.TypeOf(value));
+
+    public object? ToObject() => Messaging.PropertyValues.TryParse(Value, Type, out var parsed, out _) ? parsed : Value;
+}
+
 public sealed record RuleDefinition
 {
     public const string DefaultName = "$Default";
@@ -100,10 +108,23 @@ public sealed record RuleDefinition
     public string? ReplyToSessionId { get; init; }
     public string? ContentType { get; init; }
 
-    /// <summary>Correlation filter application properties, matched as strings.</summary>
+    /// <summary>Correlation filter application properties, as text; see <see cref="PropertyTypes"/>.</summary>
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>
+    /// The type of each correlation property (missing means String). A filter on <c>tier = 5</c> only matches an
+    /// integer 5, so the type must survive editing, export and import.
+    /// </summary>
+    public IReadOnlyDictionary<string, Messaging.PropertyValueType> PropertyTypes { get; init; } =
+        new Dictionary<string, Messaging.PropertyValueType>();
+
+    /// <summary>Values for <c>@name</c> placeholders in <see cref="SqlExpression"/>.</summary>
+    public IReadOnlyDictionary<string, TypedValue> SqlParameters { get; init; } = new Dictionary<string, TypedValue>();
+
     public string? ActionSqlExpression { get; init; }
+
+    /// <summary>Values for <c>@name</c> placeholders in <see cref="ActionSqlExpression"/>.</summary>
+    public IReadOnlyDictionary<string, TypedValue> ActionParameters { get; init; } = new Dictionary<string, TypedValue>();
 
     public bool HasCorrelationCriteria =>
         new[] { CorrelationId, MessageId, Subject, SessionId, To, ReplyTo, ReplyToSessionId, ContentType }.Any(v => !string.IsNullOrWhiteSpace(v))

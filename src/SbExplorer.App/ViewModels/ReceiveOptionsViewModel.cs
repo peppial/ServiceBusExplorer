@@ -10,8 +10,19 @@ public enum RetrieveMode
 }
 
 /// <summary>The original's "Retrieve messages" dialog: peek or receive, top N or all, from a sequence number.</summary>
-public partial class ReceiveOptionsViewModel(string title, bool canReceive, long? knownCount) : ObservableObject
+public partial class ReceiveOptionsViewModel(string title, bool canReceive, long? knownCount, int? maxDeliveryCount = null)
+    : ObservableObject
 {
+    /// <summary>Receiving locked messages has side effects on a live entity; say so before OK.</summary>
+    public string? ModeWarning => Mode switch
+    {
+        RetrieveMode.ReceiveAndDelete => "Receive and Delete removes the messages for good; consumers will never see them.",
+        RetrieveMode.ReceiveLocked => maxDeliveryCount is { } max
+            ? $"Locked messages are hidden from consumers until settled. Releasing them or letting the lock expire counts as a delivery; after {max} the message is dead-lettered."
+            : "Locked messages are hidden from consumers until settled. Releasing them or letting the lock expire counts as a delivery.",
+        _ => null,
+    };
+
     /// <summary>"All" is capped so a huge queue can't exhaust memory; Peek next continues from there.</summary>
     public const int AllLimit = 10_000;
 
@@ -19,7 +30,7 @@ public partial class ReceiveOptionsViewModel(string title, bool canReceive, long
     public bool CanReceive { get; } = canReceive;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPeek), nameof(IsReceiveAndDelete), nameof(IsReceiveLocked))]
+    [NotifyPropertyChangedFor(nameof(IsPeek), nameof(IsReceiveAndDelete), nameof(IsReceiveLocked), nameof(ModeWarning))]
     private RetrieveMode _mode = RetrieveMode.Peek;
 
     [ObservableProperty]

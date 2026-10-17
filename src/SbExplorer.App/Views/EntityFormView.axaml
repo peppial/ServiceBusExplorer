@@ -117,8 +117,12 @@
         </Grid>
       </HeaderedContentControl>
       <HeaderedContentControl Classes="group" Header="Filter" IsVisible="{Binding IsSqlFilter}">
-        <TextBox Text="{Binding SqlExpression}" AcceptsReturn="True" Height="80" TextWrapping="Wrap"
-                 FontFamily="{StaticResource MonoFont}" PlaceholderText="priority = 'high' AND region IN ('eu', 'us')" />
+        <StackPanel>
+          <TextBox Text="{Binding SqlExpression}" AcceptsReturn="True" Height="80" TextWrapping="Wrap"
+                   FontFamily="{StaticResource MonoFont}" PlaceholderText="priority = 'high' AND region IN ('eu', 'us')" />
+          <TextBlock Classes="hint" Text="{Binding ParametersNote}" TextWrapping="Wrap" Margin="0,4,0,0"
+                     IsVisible="{Binding ParametersNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
       </HeaderedContentControl>
       <HeaderedContentControl Classes="group" Header="Correlation Filter" IsVisible="{Binding IsCorrelationFilter}">
         <StackPanel>
@@ -145,10 +149,12 @@
           <ItemsControl ItemsSource="{Binding RuleProperties}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:KeyValueRowViewModel">
-                <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="6" Margin="0,2">
+                <Grid ColumnDefinitions="180,*,100,Auto" ColumnSpacing="6" Margin="0,2">
                   <TextBox Text="{Binding Key}" PlaceholderText="Name" />
                   <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
-                  <Button Grid.Column="2" Classes="small" Content="✕" ToolTip.Tip="Remove"
+                  <ComboBox Grid.Column="2" HorizontalAlignment="Stretch" SelectedItem="{Binding Type}"
+                            ItemsSource="{Binding $parent[views:EntityFormView].((vm:EntityEditorViewModel)DataContext).PropertyTypes}" />
+                  <Button Grid.Column="3" Classes="small" Content="✕" ToolTip.Tip="Remove"
                           Command="{Binding $parent[views:EntityFormView].((vm:EntityEditorViewModel)DataContext).RemoveRulePropertyCommand}"
                           CommandParameter="{Binding}" />
                 </Grid>

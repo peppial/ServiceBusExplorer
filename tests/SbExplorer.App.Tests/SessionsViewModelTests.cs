@@ -53,7 +53,7 @@ public class SessionsViewModelTests
     }
 
     [Fact]
-    public async Task Selecting_a_session_loads_its_state_and_peeks_only_its_messages()
+    public async Task Selecting_a_session_peeks_its_messages_and_loads_state_only_on_request()
     {
         Seed();
         _service.SessionStates["b"] = """{"step":2}"""u8.ToArray();
@@ -63,9 +63,13 @@ public class SessionsViewModelTests
         vm.SelectedSession = vm.Sessions.Single(s => s.SessionId == "b");
         await Task.Yield();
 
+        // Reading state locks the session, so selecting it alone doesn't.
+        Assert.Equal(string.Empty, vm.StateText);
+        Assert.StartsWith("Not loaded", vm.StateSummary);
+
+        await vm.LoadStateCommand.ExecuteAsync(null);
         Assert.Equal("{\n  \"step\": 2\n}", vm.StateText.ReplaceLineEndings("\n"));
         Assert.Equal("JSON · 10 B", vm.StateSummary);
-        Assert.StartsWith("Found 3 sessions", vm.Status);
         var messages = vm.Messages!;
         Assert.Equal("b", messages.SessionId);
         Assert.All(messages.Messages, m => Assert.Equal("b", m.SessionId));

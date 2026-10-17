@@ -56,6 +56,52 @@ public class NamespaceTransferTests
     }
 
     [Fact]
+    public void Export_files_keep_rule_value_types_and_parameters()
+    {
+        var definition = new NamespaceDefinition
+        {
+            Topics =
+            [
+                new TopicDefinition
+                {
+                    Name = "t",
+                    Subscriptions =
+                    [
+                        new SubscriptionDefinition
+                        {
+                            Topic = "t",
+                            Name = "s",
+                            Rules =
+                            [
+                                new RuleDefinition
+                                {
+                                    Name = "typed",
+                                    FilterKind = RuleFilterKind.Correlation,
+                                    Properties = new Dictionary<string, string> { ["tier"] = "5" },
+                                    PropertyTypes = new Dictionary<string, SbExplorer.Core.Messaging.PropertyValueType> { ["tier"] = SbExplorer.Core.Messaging.PropertyValueType.Int32 },
+                                },
+                                new RuleDefinition
+                                {
+                                    Name = "params",
+                                    SqlExpression = "amount > @min",
+                                    SqlParameters = new Dictionary<string, TypedValue> { ["@min"] = new("100", SbExplorer.Core.Messaging.PropertyValueType.Int64) },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var back = NamespaceTransfer.Deserialize(NamespaceTransfer.Serialize(definition));
+
+        var rules = back.Topics[0].Subscriptions[0].Rules;
+        Assert.Equal(SbExplorer.Core.Messaging.PropertyValueType.Int32, rules[0].PropertyTypes["tier"]);
+        Assert.Equal(new TypedValue("100", SbExplorer.Core.Messaging.PropertyValueType.Int64), rules[1].SqlParameters["@min"]);
+        Assert.Equal(100L, rules[1].SqlParameters["@min"].ToObject());
+    }
+
+    [Fact]
     public async Task Import_creates_missing_entities_and_skips_existing_ones()
     {
         var export = await new NamespaceTransfer(_entities).ExportAsync("source", cancellationToken: TestContext.Current.CancellationToken);
