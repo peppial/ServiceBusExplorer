@@ -15,7 +15,7 @@ public sealed class JsonConnectionStoreTests : IDisposable
     public async Task Round_trips_profiles_and_keeps_secrets_out_of_the_file()
     {
         var store = new JsonConnectionStore(FilePath, _secrets);
-        var profile = new ConnectionProfile { Name = "Prod", Auth = AuthKind.ConnectionString };
+        var profile = new ConnectionProfile { Name = "Prod", Auth = AuthKind.ConnectionString, PinnedEntities = ["orders", "events/Subscriptions/x"] };
 
         await store.SaveAsync(profile, "Endpoint=sb://x/;SharedAccessKeyName=k;SharedAccessKey=TOP-SECRET", TestContext.Current.CancellationToken);
 

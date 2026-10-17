@@ -3,6 +3,9 @@
     <RootNamespace>SbExplorer.Infrastructure</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="SbExplorer.Infrastructure.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\SbExplorer.Core\SbExplorer.Core.csproj" />
   </ItemGroup>
   <ItemGroup>

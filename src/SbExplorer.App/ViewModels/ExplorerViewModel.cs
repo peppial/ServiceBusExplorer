@@ -11,9 +11,16 @@ namespace SbExplorer.App.ViewModels;
 public sealed record PropertyGroupViewModel(string Name, IReadOnlyList<EntityProperty> Items);
 
 /// <summary>The entity tree and details panel for one connected namespace.</summary>
-public partial class ExplorerViewModel(INamespaceSession session, IDialogService dialogs, TimeProvider? clock = null)
+public partial class ExplorerViewModel(
+    INamespaceSession session,
+    IDialogService dialogs,
+    TimeProvider? clock = null,
+    Func<IReadOnlyList<string>, Task>? savePinnedEntities = null)
     : ObservableObject, IAsyncDisposable
 {
+    private readonly List<string> _pinned = [.. session.Profile.PinnedEntities];
+    private readonly FolderNodeViewModel _pinnedFolder = new("Entities", EntityKind.Queue);
+
     // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
     private readonly Dictionary<string, MessagesViewModel> _messageTabs = [];
 
@@ -24,7 +31,14 @@ public partial class ExplorerViewModel(INamespaceSession session, IDialogService
 
     public string Title => $"{session.Profile.Name} — {session.FullyQualifiedNamespace}";
 
-    public IReadOnlyList<FolderNodeViewModel> Roots => [_queues, _topics];
+    public IReadOnlyList<FolderNodeViewModel> Roots => session.CanManage ? [_queues, _topics] : [_pinnedFolder];
+
+    /// <summary>Without the Manage claim, entities can't be listed and are added by name instead.</summary>
+    public bool IsLimited => !session.CanManage;
+
+    public string? LimitedNotice => IsLimited
+        ? "Connected without management access, so queues and topics can't be listed. Add the queues or topic/subscriptions you want by name; messages work as far as the key's Listen and Send claims allow."
+        : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages))]
@@ -92,6 +106,12 @@ public partial class ExplorerViewModel(INamespaceSession session, IDialogService
 
         LoadStatus = "Loading…";
         HasError = false;
+        if (IsLimited)
+        {
+            ShowPinnedEntities(selectedPath);
+            return;
+        }
+
         try
         {
             var queues = _entities.GetQueuesAsync(cancellationToken);
@@ -126,6 +146,71 @@ public partial class ExplorerViewModel(INamespaceSession session, IDialogService
     }
 
     partial void OnFilterChanged(string value) => ApplyFilter();
+
+    [RelayCommand]
+    private async Task AddEntityAsync()
+    {
+        var text = await dialogs.PromptAsync("Add entity", "Queue name, or topic/subscription:", string.Empty);
+        if (text is null)
+        {
+            return;
+        }
+
+        if (!EntityReference.TryParse(text, out var entity, out var error))
+        {
+            LoadStatus = error;
+            HasError = true;
+            return;
+        }
+
+        if (!_pinned.Contains(entity!.Path, StringComparer.OrdinalIgnoreCase) && !string.Equals(entity.Path, session.ScopedEntity, StringComparison.OrdinalIgnoreCase))
+        {
+            _pinned.Add(entity.Path);
+            await SavePinnedAsync();
+        }
+
+        ShowPinnedEntities(entity.Path);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveEntity))]
+    private async Task RemoveEntityAsync()
+    {
+        var path = SelectedEntity!.Path;
+        _pinned.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        await SavePinnedAsync();
+        ShowPinnedEntities(selectedPath: null);
+    }
+
+    private bool CanRemoveEntity() =>
+        IsLimited && SelectedEntity is { } entity && !string.Equals(entity.Path, session.ScopedEntity, StringComparison.OrdinalIgnoreCase);
+
+    partial void OnSelectedNodeChanged(TreeNodeViewModel? value) => RemoveEntityCommand.NotifyCanExecuteChanged();
+
+    private void ShowPinnedEntities(string? selectedPath)
+    {
+        var paths = new List<string>();
+        if (session.ScopedEntity is { } scoped)
+        {
+            paths.Add(scoped);
+        }
+
+        paths.AddRange(_pinned.Where(p => !paths.Contains(p, StringComparer.OrdinalIgnoreCase)));
+        var nodes = paths
+            .Select(p => EntityReference.TryParse(p, out var entity, out _) ? new EntityNodeViewModel(entity!) : null)
+            .OfType<EntityNodeViewModel>()
+            .ToList();
+
+        _pinnedFolder.SetChildren(nodes);
+        _pinnedFolder.IsExpanded = true;
+        ApplyFilterTo(nodes, parentMatches: false);
+        SelectedNode = nodes.FirstOrDefault(n => string.Equals(n.Entity.Path, selectedPath, StringComparison.OrdinalIgnoreCase));
+        LoadStatus = nodes.Count == 0
+            ? "No management access: add a queue or topic/subscription by name."
+            : $"No management access · {Plural(nodes.Count, "entity added by name", "entities added by name")}";
+        HasError = false;
+    }
+
+    private Task SavePinnedAsync() => savePinnedEntities?.Invoke(_pinned.ToList()) ?? Task.CompletedTask;
 
     private EntityNodeViewModel TopicNode(EntityInfo topic) =>
         new(topic, async ct =>
@@ -164,6 +249,7 @@ public partial class ExplorerViewModel(INamespaceSession session, IDialogService
     private void ApplyFilter()
     {
         ApplyFilterTo(_queues.Children.OfType<EntityNodeViewModel>(), parentMatches: false);
+        ApplyFilterTo(_pinnedFolder.Children.OfType<EntityNodeViewModel>(), parentMatches: false);
 
         foreach (var topic in _topics.Children.OfType<EntityNodeViewModel>())
         {
@@ -189,4 +275,6 @@ public partial class ExplorerViewModel(INamespaceSession session, IDialogService
         Roots.SelectMany(r => r.SelfAndDescendants()).OfType<EntityNodeViewModel>();
 
     private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    private static string Plural(int count, string singular, string plural) => count == 1 ? $"1 {singular}" : $"{count} {plural}";
 }

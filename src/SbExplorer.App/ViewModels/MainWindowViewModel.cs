@@ -123,8 +123,10 @@ public partial class MainWindowViewModel(
 
             Session = await connector.ConnectAsync(item.Profile, secret, cancellationToken);
             item.IsConnected = true;
-            SetStatus($"Connected to {Session.FullyQualifiedNamespace}");
-            Explorer = new ExplorerViewModel(Session, dialogs);
+            SetStatus(Session.CanManage
+                ? $"Connected to {Session.FullyQualifiedNamespace}"
+                : $"Connected to {Session.FullyQualifiedNamespace} without management access (the credential has no Manage claim)");
+            Explorer = new ExplorerViewModel(Session, dialogs, savePinnedEntities: pinned => SavePinnedAsync(item, pinned));
             await Explorer.RefreshCommand.ExecuteAsync(null);
         }
         catch (OperationCanceledException)
@@ -164,6 +166,12 @@ public partial class MainWindowViewModel(
     }
 
     private bool HasSelection() => SelectedConnection is not null;
+
+    private async Task SavePinnedAsync(ConnectionItemViewModel item, IReadOnlyList<string> pinned)
+    {
+        item.Profile = item.Profile with { PinnedEntities = pinned };
+        await store.SaveAsync(item.Profile, secret: null);
+    }
 
     private void SetStatus(string message, bool isError = false)
     {

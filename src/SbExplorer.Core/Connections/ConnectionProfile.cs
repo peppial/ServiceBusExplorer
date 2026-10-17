@@ -29,5 +29,24 @@ public sealed record ConnectionProfile
     public EntraCredentialKind EntraCredential { get; init; } = EntraCredentialKind.InteractiveBrowser;
     public string? TenantId { get; init; }
 
+    /// <summary>
+    /// Entities added by name, shown when the credential can't list entities (no Manage claim),
+    /// e.g. <c>orders</c> or <c>events/Subscriptions/billing</c>.
+    /// </summary>
+    public IReadOnlyList<string> PinnedEntities { get; init; } = [];
+
     public string SecretKey => $"connection:{Id:N}";
+
+    // Records compare lists by reference; compare pinned entities by content so a reloaded profile equals the saved one.
+    public bool Equals(ConnectionProfile? other) =>
+        other is not null
+        && Id == other.Id
+        && Name == other.Name
+        && Auth == other.Auth
+        && FullyQualifiedNamespace == other.FullyQualifiedNamespace
+        && EntraCredential == other.EntraCredential
+        && TenantId == other.TenantId
+        && PinnedEntities.SequenceEqual(other.PinnedEntities);
+
+    public override int GetHashCode() => HashCode.Combine(Id, Name, Auth, FullyQualifiedNamespace, EntraCredential, TenantId, PinnedEntities.Count);
 }

@@ -57,6 +57,8 @@ internal sealed class FakeConnectionStore(ISecretStore secrets) : IConnectionSto
 internal sealed class FakeConnector : INamespaceConnector
 {
     public Exception? Failure { get; set; }
+    public bool CanManage { get; set; } = true;
+    public string? ScopedEntity { get; set; }
     public List<FakeSession> Sessions { get; } = [];
 
     public Task<INamespaceSession> ConnectAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken = default)
@@ -66,7 +68,11 @@ internal sealed class FakeConnector : INamespaceConnector
             return Task.FromException<INamespaceSession>(Failure);
         }
 
-        var session = new FakeSession(profile, profile.FullyQualifiedNamespace ?? "fake.servicebus.windows.net");
+        var session = new FakeSession(profile, profile.FullyQualifiedNamespace ?? "fake.servicebus.windows.net")
+        {
+            CanManage = CanManage,
+            ScopedEntity = ScopedEntity,
+        };
         Sessions.Add(session);
         return Task.FromResult<INamespaceSession>(session);
     }
@@ -75,6 +81,8 @@ internal sealed class FakeConnector : INamespaceConnector
 internal sealed class FakeSession(ConnectionProfile profile, string host, FakeEntityService? entities = null, bool isEmulator = false) : INamespaceSession
 {
     public bool IsEmulator { get; } = isEmulator;
+    public bool CanManage { get; init; } = true;
+    public string? ScopedEntity { get; init; }
     public ConnectionProfile Profile { get; } = profile;
     public string FullyQualifiedNamespace { get; } = host;
     public FakeEntityService FakeEntities { get; } = entities ?? new FakeEntityService();

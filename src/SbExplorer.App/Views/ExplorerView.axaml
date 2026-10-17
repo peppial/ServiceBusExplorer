@@ -22,6 +22,15 @@
 
     <Grid ColumnDefinitions="340,4,*">
       <DockPanel Grid.Column="0">
+        <Border DockPanel.Dock="Top" Classes="notice" IsVisible="{Binding IsLimited}">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding LimitedNotice}" TextWrapping="Wrap" FontSize="12" />
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button Content="+ Add entity…" Command="{Binding AddEntityCommand}" />
+              <Button Content="Remove" Command="{Binding RemoveEntityCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
         <TextBox x:Name="FilterBox" DockPanel.Dock="Top" Margin="0,0,0,6"
                  Text="{Binding Filter}" PlaceholderText="Filter by name" />
         <ProgressBar DockPanel.Dock="Top" IsIndeterminate="True" Height="2" MinHeight="2"

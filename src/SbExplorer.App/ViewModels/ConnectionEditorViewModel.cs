@@ -13,11 +13,13 @@ public partial class ConnectionEditorViewModel : ObservableObject
 
     private readonly INamespaceConnector _connector;
     private readonly Guid _id;
+    private readonly IReadOnlyList<string> _pinnedEntities;
 
     public ConnectionEditorViewModel(INamespaceConnector connector, ConnectionProfile? existing = null, string? existingSecret = null)
     {
         _connector = connector;
         _id = existing?.Id ?? Guid.NewGuid();
+        _pinnedEntities = existing?.PinnedEntities ?? [];
         IsNew = existing is null;
 
         if (existing is not null)
@@ -118,6 +120,7 @@ public partial class ConnectionEditorViewModel : ObservableObject
         FullyQualifiedNamespace = UseEntra ? NormalizeHost(Namespace) : null,
         EntraCredential = SelectedCredential.Kind,
         TenantId = UseEntra && !string.IsNullOrWhiteSpace(TenantId) ? TenantId.Trim() : null,
+        PinnedEntities = _pinnedEntities,
     };
 
     public string? Secret => UseEntra ? null : ConnectionString.Trim();
@@ -145,7 +148,9 @@ public partial class ConnectionEditorViewModel : ObservableObject
         {
             await using var session = await _connector.ConnectAsync(ToProfile(), Secret, cancellationToken);
             TestSucceeded = true;
-            TestResult = $"Connected to {session.FullyQualifiedNamespace}.";
+            TestResult = session.CanManage
+                ? $"Connected to {session.FullyQualifiedNamespace}."
+                : $"Connected to {session.FullyQualifiedNamespace}, but without management access: entities must be added by name.";
         }
         catch (OperationCanceledException)
         {

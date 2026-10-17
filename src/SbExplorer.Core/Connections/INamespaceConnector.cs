@@ -12,6 +12,15 @@ public interface INamespaceSession : IAsyncDisposable
     /// <summary>The local Service Bus emulator, which reports zero for most runtime message counts.</summary>
     bool IsEmulator { get; }
 
+    /// <summary>
+    /// False when the credential was refused by the management API (no Manage claim, or only a data role
+    /// under Entra). Entities can't be listed then, but messages can still be sent or received by name.
+    /// </summary>
+    bool CanManage { get; }
+
+    /// <summary>The entity a connection string is scoped to (its EntityPath), if any.</summary>
+    string? ScopedEntity { get; }
+
     IEntityService Entities { get; }
     IMessageService Messages { get; }
 }
