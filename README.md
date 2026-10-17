@@ -53,9 +53,12 @@ dotnet test --solution ServiceBusExplorer.slnx
 with sample entities, so you can try everything without an Azure subscription.
 
 ```sh
-docker compose -f docker/emulator.yml up -d   # first start takes a minute or two
+docker/start-emulator.sh                      # first start takes a minute or two
 dotnet run docker/seed.cs                     # clears and fills the sample entities with messages
 ```
+
+The script puts a random password for the emulator's SQL Server container in `docker/.env`, which git ignores. To
+stop the emulator, run `docker compose -f docker/emulator.yml --env-file docker/.env down`.
 
 In the app, choose **File > Connect**, click **Local emulator**, then **OK** (or **Save** it first). The emulator caps
 message time-to-live at one hour, so

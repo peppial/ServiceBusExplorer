@@ -6,3 +6,5 @@ artifacts/
 *.user
 .DS_Store
 TestResults/
+# Local secrets, e.g. the emulator SQL password created by docker/start-emulator.sh
+.env

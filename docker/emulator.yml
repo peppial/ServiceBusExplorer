@@ -1,5 +1,7 @@
 # Local Azure Service Bus emulator for integration tests and manual testing.
-#   docker compose -f docker/emulator.yml up -d
+#   docker/start-emulator.sh
+# That script creates docker/.env (git-ignored) with a random SBX_SQL_PASSWORD for the SQL Server container and
+# then runs: docker compose -f docker/emulator.yml up -d
 # Seed sample messages (the emulator caps TTL at 1 hour, so re-run after a while):
 #   dotnet run docker/seed.cs
 # Connection string:
@@ -15,7 +17,7 @@ services:
       - "5300:5300"
     environment:
       SQL_SERVER: sqlserver
-      MSSQL_SA_PASSWORD: "REDACTED-see-docker-start-emulator-sh"
+      MSSQL_SA_PASSWORD: "${SBX_SQL_PASSWORD:?Set SBX_SQL_PASSWORD; docker/start-emulator.sh creates one in docker/.env}"
       ACCEPT_EULA: "Y"
       SQL_WAIT_INTERVAL: "15"
     depends_on:
@@ -26,4 +28,4 @@ services:
     platform: linux/amd64
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "REDACTED-see-docker-start-emulator-sh"
+      MSSQL_SA_PASSWORD: "${SBX_SQL_PASSWORD:?Set SBX_SQL_PASSWORD; docker/start-emulator.sh creates one in docker/.env}"

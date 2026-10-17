@@ -32,19 +32,19 @@ jobs:
         with:
           global-json-file: global.json
       - name: Start Service Bus emulator
-        run: docker compose -f docker/emulator.yml up -d
+        run: docker/start-emulator.sh
       - name: Wait for emulator
         run: |
           for i in $(seq 1 60); do
-            if docker compose -f docker/emulator.yml logs emulator | grep -q "Successfully Up"; then exit 0; fi
+            if docker compose -f docker/emulator.yml --env-file docker/.env logs emulator | grep -q "Successfully Up"; then exit 0; fi
             sleep 5
           done
-          docker compose -f docker/emulator.yml logs
+          docker compose -f docker/emulator.yml --env-file docker/.env logs
           exit 1
       - run: dotnet test --project tests/SbExplorer.IntegrationTests -c Release
       - name: Emulator logs
         if: failure()
-        run: docker compose -f docker/emulator.yml logs
+        run: docker compose -f docker/emulator.yml --env-file docker/.env logs
 
   package:
     # Proves every platform package still builds; releases are made by release.yml.

@@ -21,7 +21,7 @@ internal static class Emulator
             return;
         }
 
-        const string message = "Service Bus emulator is not running (docker compose -f docker/emulator.yml up -d).";
+        const string message = "Service Bus emulator is not running (docker/start-emulator.sh).";
         if (Required)
         {
             throw new InvalidOperationException(message);
