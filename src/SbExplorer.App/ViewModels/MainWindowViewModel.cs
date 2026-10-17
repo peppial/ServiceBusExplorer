@@ -124,7 +124,7 @@ public partial class MainWindowViewModel(
             Session = await connector.ConnectAsync(item.Profile, secret, cancellationToken);
             item.IsConnected = true;
             SetStatus($"Connected to {Session.FullyQualifiedNamespace}");
-            Explorer = new ExplorerViewModel(Session);
+            Explorer = new ExplorerViewModel(Session, dialogs);
             await Explorer.RefreshCommand.ExecuteAsync(null);
         }
         catch (OperationCanceledException)
@@ -146,8 +146,13 @@ public partial class MainWindowViewModel(
         }
 
         var session = Session;
-        Explorer?.RefreshCancelCommand.Execute(null);
-        Explorer = null;
+        if (Explorer is { } explorer)
+        {
+            explorer.RefreshCancelCommand.Execute(null);
+            Explorer = null;
+            await explorer.DisposeAsync();
+        }
+
         Session = null;
         foreach (var item in Connections.Where(c => c.Profile.Id == session.Profile.Id))
         {

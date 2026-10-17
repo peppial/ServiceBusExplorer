@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SbExplorer.App.ViewModels"
              xmlns:mgmt="using:SbExplorer.Core.Management"
+             xmlns:views="using:SbExplorer.App.Views"
              x:Class="SbExplorer.App.Views.ExplorerView"
              x:DataType="vm:ExplorerViewModel">
   <DockPanel>
@@ -57,34 +58,43 @@
         <TextBlock Text="Select a queue, topic, subscription or rule." Opacity="0.6"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsVisible="{Binding !HasSelection}" />
-        <ScrollViewer IsVisible="{Binding HasSelection}">
-          <StackPanel Spacing="14">
-            <StackPanel>
-              <TextBlock x:Name="SelectedName" Text="{Binding SelectedEntity.Name, FallbackValue=''}"
-                         FontSize="20" FontWeight="SemiBold" />
-              <SelectableTextBlock Text="{Binding SelectedEntity.Path, FallbackValue=''}" FontSize="12" Opacity="0.7" />
-            </StackPanel>
-            <ItemsControl ItemsSource="{Binding PropertyGroups}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:PropertyGroupViewModel">
-                  <StackPanel Margin="0,0,0,14">
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,0,4" />
-                    <ItemsControl ItemsSource="{Binding Items}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="mgmt:EntityProperty">
-                          <Grid ColumnDefinitions="220,*" Margin="0,2">
-                            <TextBlock Text="{Binding Name}" Opacity="0.7" />
-                            <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
-                          </Grid>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+        <DockPanel IsVisible="{Binding HasSelection}">
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <TextBlock x:Name="SelectedName" Text="{Binding SelectedEntity.Name, FallbackValue=''}"
+                       FontSize="20" FontWeight="SemiBold" />
+            <SelectableTextBlock Text="{Binding SelectedEntity.Path, FallbackValue=''}" FontSize="12" Opacity="0.7" />
           </StackPanel>
-        </ScrollViewer>
+          <TabControl x:Name="DetailTabs">
+            <TabItem Header="Properties">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel Spacing="14">
+                  <ItemsControl ItemsSource="{Binding PropertyGroups}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PropertyGroupViewModel">
+                        <StackPanel Margin="0,0,0,14">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                          <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="mgmt:EntityProperty">
+                                <Grid ColumnDefinitions="220,*" Margin="0,2">
+                                  <TextBlock Text="{Binding Name}" Opacity="0.7" />
+                                  <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                </Grid>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Messages" IsVisible="{Binding HasMessages}">
+              <views:MessagesView DataContext="{Binding Messages}" Margin="0,8,0,0" />
+            </TabItem>
+          </TabControl>
+        </DockPanel>
       </Panel>
     </Grid>
   </DockPanel>

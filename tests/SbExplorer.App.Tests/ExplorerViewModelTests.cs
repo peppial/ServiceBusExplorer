@@ -19,7 +19,7 @@ public class ExplorerViewModelTests
         _entities.Rules["events/Subscriptions/billing"] = [Rule("events", "billing", "invoices")];
 
         var session = new FakeSession(new ConnectionProfile { Name = "Dev" }, "dev.servicebus.windows.net", _entities);
-        _vm = new ExplorerViewModel(session);
+        _vm = new ExplorerViewModel(session, new FakeDialogs());
     }
 
     private FolderNodeViewModel QueuesFolder => _vm.Roots[0];
@@ -57,7 +57,7 @@ public class ExplorerViewModelTests
     public async Task Emulator_sessions_explain_missing_counts()
     {
         var session = new FakeSession(new ConnectionProfile { Name = "Emu" }, "localhost", _entities, isEmulator: true);
-        var vm = new ExplorerViewModel(session);
+        var vm = new ExplorerViewModel(session, new FakeDialogs());
 
         await vm.RefreshCommand.ExecuteAsync(null);
 

@@ -2,6 +2,7 @@ using SbExplorer.App.Services;
 using SbExplorer.App.ViewModels;
 using SbExplorer.Core.Connections;
 using SbExplorer.Core.Management;
+using SbExplorer.Core.Messaging;
 
 namespace SbExplorer.App.Tests;
 
@@ -78,6 +79,8 @@ internal sealed class FakeSession(ConnectionProfile profile, string host, FakeEn
     public string FullyQualifiedNamespace { get; } = host;
     public FakeEntityService FakeEntities { get; } = entities ?? new FakeEntityService();
     public IEntityService Entities => FakeEntities;
+    public FakeMessageService FakeMessages { get; } = new();
+    public IMessageService Messages => FakeMessages;
     public bool Disposed { get; private set; }
 
     public ValueTask DisposeAsync()
@@ -91,10 +94,42 @@ internal sealed class FakeDialogs : IDialogService
 {
     /// <summary>Fills in the editor and returns whether to "save".</summary>
     public Func<ConnectionEditorViewModel, bool> OnEditor { get; set; } = _ => false;
+
+    /// <summary>Receives the send dialog; by default sends whatever it was prefilled with.</summary>
+    public Func<SendMessageViewModel, Task<bool>> OnSend { get; set; } = async sender =>
+    {
+        await sender.SendCommand.ExecuteAsync(null);
+        return sender.SendError is null;
+    };
+
     public bool ConfirmResult { get; set; }
     public int ConfirmCount { get; private set; }
+    public string? PromptResult { get; set; }
+    public string? CopiedText { get; private set; }
+    public List<(string Name, byte[] Content)> SavedFiles { get; } = [];
+    public SendMessageViewModel? LastSendDialog { get; private set; }
 
     public Task<bool> ShowConnectionEditorAsync(ConnectionEditorViewModel editor) => Task.FromResult(OnEditor(editor));
+
+    public Task<bool> ShowSendMessageAsync(SendMessageViewModel sender)
+    {
+        LastSendDialog = sender;
+        return OnSend(sender);
+    }
+
+    public Task<string?> PromptAsync(string title, string label, string initialValue) => Task.FromResult(PromptResult);
+
+    public Task<bool> SaveFileAsync(string suggestedName, ReadOnlyMemory<byte> content)
+    {
+        SavedFiles.Add((suggestedName, content.ToArray()));
+        return Task.FromResult(true);
+    }
+
+    public Task CopyTextAsync(string text)
+    {
+        CopiedText = text;
+        return Task.CompletedTask;
+    }
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText)
     {
@@ -155,5 +190,100 @@ internal sealed class FakeEntityService : IEntityService
         RuleLoads++;
         return Task.FromResult<IReadOnlyList<EntityInfo>>(
             Rules.GetValueOrDefault(EntityInfo.SubscriptionPath(topic, subscription))?.ToList() ?? []);
+    }
+}
+
+/// <summary>An in-memory entity: messages keyed by source path, with sequence numbers assigned on send.</summary>
+internal sealed class FakeMessageService : IMessageService
+{
+    private long _nextSequence = 1;
+
+    public Dictionary<string, List<MessageInfo>> Entities { get; } = [];
+    public List<(string Entity, OutgoingMessage Message)> Sent { get; } = [];
+    public List<FakeBatch> Batches { get; } = [];
+    public Exception? Failure { get; set; }
+
+    public void Seed(string path, int count, Func<int, MessageInfo>? create = null)
+    {
+        var list = Messages(path);
+        for (var i = 0; i < count; i++)
+        {
+            var message = create?.Invoke(i) ?? new MessageInfo { MessageId = $"m{i}", Body = "{\"n\":1}"u8.ToArray(), ContentType = "application/json" };
+            list.Add(message with { SequenceNumber = _nextSequence++ });
+        }
+    }
+
+    public List<MessageInfo> Messages(string path) =>
+        Entities.TryGetValue(path, out var list) ? list : Entities[path] = [];
+
+    public Task<IReadOnlyList<MessageInfo>> PeekAsync(MessageSource source, int maxMessages, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
+    {
+        if (Failure is not null)
+        {
+            return Task.FromException<IReadOnlyList<MessageInfo>>(Failure);
+        }
+
+        return Task.FromResult<IReadOnlyList<MessageInfo>>(Messages(Key(source))
+            .Where(m => m.SequenceNumber >= (fromSequenceNumber ?? 0))
+            .Take(maxMessages)
+            .ToList());
+    }
+
+    public Task<IReadOnlyList<MessageInfo>> ReceiveAndDeleteAsync(MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
+    {
+        var list = Messages(Key(source));
+        var taken = list.Take(maxMessages).ToList();
+        list.RemoveRange(0, taken.Count);
+        return Task.FromResult<IReadOnlyList<MessageInfo>>(taken);
+    }
+
+    public Task<IReceivedBatch> ReceivePeekLockAsync(MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
+    {
+        var locked = Messages(Key(source)).Take(maxMessages)
+            .Select(m => m with { LockToken = Guid.NewGuid().ToString(), LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) })
+            .ToList();
+        var batch = new FakeBatch(locked);
+        Batches.Add(batch);
+        return Task.FromResult<IReceivedBatch>(batch);
+    }
+
+    public Task SendAsync(string entityName, IReadOnlyList<OutgoingMessage> messages, CancellationToken cancellationToken = default)
+    {
+        if (Failure is not null)
+        {
+            return Task.FromException(Failure);
+        }
+
+        Sent.AddRange(messages.Select(m => (entityName, m)));
+        return Task.CompletedTask;
+    }
+
+    private static string Key(MessageSource source) =>
+        source.SubQueue == SubQueueKind.None ? source.EntityPath : $"{source.EntityPath}/$DeadLetterQueue";
+}
+
+internal sealed class FakeBatch(IReadOnlyList<MessageInfo> messages) : IReceivedBatch
+{
+    public IReadOnlyList<MessageInfo> Messages { get; } = messages;
+    public List<(string Action, long Sequence, string? Reason)> Settled { get; } = [];
+    public bool Disposed { get; private set; }
+
+    public Task CompleteAsync(MessageInfo message, CancellationToken cancellationToken = default) => Record("Complete", message);
+    public Task AbandonAsync(MessageInfo message, CancellationToken cancellationToken = default) => Record("Abandon", message);
+    public Task DeferAsync(MessageInfo message, CancellationToken cancellationToken = default) => Record("Defer", message);
+
+    public Task DeadLetterAsync(MessageInfo message, string reason, string? description, CancellationToken cancellationToken = default) =>
+        Record("DeadLetter", message, reason);
+
+    public ValueTask DisposeAsync()
+    {
+        Disposed = true;
+        return ValueTask.CompletedTask;
+    }
+
+    private Task Record(string action, MessageInfo message, string? reason = null)
+    {
+        Settled.Add((action, message.SequenceNumber, reason));
+        return Task.CompletedTask;
     }
 }

@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SbExplorer.App.Views.PromptWindow"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="20" Spacing="12">
+    <TextBlock x:Name="LabelText" />
+    <TextBox x:Name="ValueBox" />
+    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+      <Button Content="Cancel" IsCancel="True" Click="OnCancel" />
+      <Button Content="OK" Classes="accent" IsDefault="True" Click="OnOk" />
+    </StackPanel>
+  </StackPanel>
+</Window>

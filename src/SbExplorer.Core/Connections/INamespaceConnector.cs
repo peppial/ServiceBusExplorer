@@ -1,4 +1,5 @@
 using SbExplorer.Core.Management;
+using SbExplorer.Core.Messaging;
 
 namespace SbExplorer.Core.Connections;
 
@@ -12,6 +13,7 @@ public interface INamespaceSession : IAsyncDisposable
     bool IsEmulator { get; }
 
     IEntityService Entities { get; }
+    IMessageService Messages { get; }
 }
 
 public interface INamespaceConnector

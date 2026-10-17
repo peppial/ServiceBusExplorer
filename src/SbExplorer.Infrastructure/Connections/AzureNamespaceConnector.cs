@@ -2,7 +2,9 @@ using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using SbExplorer.Core.Connections;
 using SbExplorer.Core.Management;
+using SbExplorer.Core.Messaging;
 using SbExplorer.Infrastructure.Management;
+using SbExplorer.Infrastructure.Messaging;
 
 namespace SbExplorer.Infrastructure.Connections;
 
@@ -81,6 +83,7 @@ public sealed class AzureNamespaceSession(
     public ServiceBusClient Client { get; } = client;
     public ServiceBusAdministrationClient Administration { get; } = administration;
     public IEntityService Entities { get; } = new AzureEntityService(administration);
+    public IMessageService Messages { get; } = new AzureMessageService(client);
 
     public ValueTask DisposeAsync() => Client.DisposeAsync();
 }

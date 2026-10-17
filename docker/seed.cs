@@ -1,8 +1,8 @@
 #:package Azure.Messaging.ServiceBus
 
-// Fills the local emulator with sample messages in every state the explorer shows.
+// Clears the local emulator, then fills it with sample messages in every state the explorer shows.
 //   dotnet run docker/seed.cs
-using System.Text;
+using System.Globalization;
 using Azure.Messaging.ServiceBus;
 
 const string connectionString =
@@ -10,11 +10,24 @@ const string connectionString =
 
 await using var client = new ServiceBusClient(connectionString);
 
+foreach (var queue in new[] { "orders", "payments", "audit" })
+{
+    await ClearAsync(queue, null);
+}
+
+foreach (var subscription in new[] { "all-events", "high-priority" })
+{
+    await ClearAsync("events", subscription);
+}
+
+await ClearSessionsAsync("orders-sessions");
+
 // orders: 20 JSON orders, 3 dead-lettered, 2 scheduled 30 minutes ahead, 1 deferred.
 await using (var sender = client.CreateSender("orders"))
 {
     var batch = Enumerable.Range(1, 20).Select(i => new ServiceBusMessage(
-        $$"""{"orderId":{{1000 + i}},"customer":"customer-{{i % 5}}","total":{{i * 12.5:0.00}},"items":[{"sku":"SKU-{{i}}","qty":{{i % 3 + 1}}}]}""")
+        string.Create(CultureInfo.InvariantCulture,
+        $$"""{"orderId":{{1000 + i}},"customer":"customer-{{i % 5}}","total":{{i * 12.5:0.00}},"items":[{"sku":"SKU-{{i}}","qty":{{i % 3 + 1}}}]}"""))
     {
         MessageId = $"order-{1000 + i}",
         ContentType = "application/json",
@@ -99,5 +112,61 @@ await using (var sender = client.CreateSender("events"))
     ]);
 }
 
-Console.WriteLine("Seeded: orders (16 active, 3 dead-lettered, 2 scheduled, 1 deferred), orders-sessions (3 sessions),");
+Console.WriteLine("Cleared and seeded: orders (16 active, 3 dead-lettered, 2 scheduled, 1 deferred), orders-sessions (3 sessions),");
 Console.WriteLine("        payments (2), events -> all-events (4), high-priority (2), billing -> audit (2).");
+
+// Removes active, dead-lettered, deferred and scheduled messages so re-seeding starts clean.
+async Task ClearAsync(string entity, string? subscription)
+{
+    foreach (var subQueue in new[] { SubQueue.None, SubQueue.DeadLetter })
+    {
+        var options = new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete, SubQueue = subQueue };
+        await using var receiver = subscription is null
+            ? client.CreateReceiver(entity, options)
+            : client.CreateReceiver(entity, subscription, options);
+        while ((await receiver.ReceiveMessagesAsync(100, TimeSpan.FromSeconds(1))).Count > 0)
+        {
+        }
+
+        var leftovers = await receiver.PeekMessagesAsync(500);
+        var deferred = leftovers.Where(m => m.State == ServiceBusMessageState.Deferred).Select(m => m.SequenceNumber).ToList();
+        if (deferred.Count > 0)
+        {
+            await receiver.ReceiveDeferredMessagesAsync(deferred);
+        }
+
+        var scheduled = leftovers.Where(m => m.State == ServiceBusMessageState.Scheduled).Select(m => m.SequenceNumber).ToList();
+        if (scheduled.Count > 0)
+        {
+            await using var sender = client.CreateSender(entity);
+            await sender.CancelScheduledMessagesAsync(scheduled);
+        }
+    }
+}
+
+async Task ClearSessionsAsync(string queue)
+{
+    while (true)
+    {
+        ServiceBusSessionReceiver session;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            session = await client.AcceptNextSessionAsync(
+                queue, new ServiceBusSessionReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }, timeout.Token);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ServiceBusException { Reason: ServiceBusFailureReason.ServiceTimeout })
+        {
+            return;
+        }
+
+        await using (session)
+        {
+            while ((await session.ReceiveMessagesAsync(100, TimeSpan.FromSeconds(1))).Count > 0)
+            {
+            }
+
+            await session.SetSessionStateAsync(null);
+        }
+    }
+}

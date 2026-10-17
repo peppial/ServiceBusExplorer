@@ -3,6 +3,9 @@
              x:Class="SbExplorer.App.App"
              Name="Service Bus Explorer"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <FontFamily x:Key="MonoFont">Menlo, Consolas, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
     <Style Selector="TextBlock.error">
@@ -47,6 +50,26 @@
     <Style Selector="Border.badge.danger > TextBlock">
       <Setter Property="Foreground" Value="#D13438" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Padding" Value="10,0" />
+    </Style>
+    <Style Selector="Border.notice">
+      <Setter Property="Background" Value="#22FFB900" />
+      <Setter Property="BorderBrush" Value="#66FFB900" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Border.locked">
+      <Setter Property="Background" Value="#220078D4" />
+      <Setter Property="BorderBrush" Value="#660078D4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="10,6" />
     </Style>
   </Application.Styles>
 </Application>

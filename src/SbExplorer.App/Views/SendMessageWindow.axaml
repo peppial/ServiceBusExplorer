@@ -1,0 +1,99 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SbExplorer.App.ViewModels"
+        x:Class="SbExplorer.App.Views.SendMessageWindow"
+        x:DataType="vm:SendMessageViewModel"
+        Title="{Binding Title}"
+        Width="820" Height="720" MinWidth="640" MinHeight="520"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+      <TextBlock Text="{Binding ValidationError}" Classes="error" TextWrapping="Wrap" IsVisible="{Binding !IsValid}" />
+      <TextBlock Text="{Binding SendError}" Classes="error" TextWrapping="Wrap"
+                 IsVisible="{Binding SendError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="Copies" VerticalAlignment="Center" />
+          <NumericUpDown Value="{Binding Count}" Minimum="1" Maximum="1000" FormatString="0" Width="110"
+                         ParsingNumberStyle="Integer" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+          <Button Content="Cancel" IsCancel="True" Click="OnCancel" />
+          <Button Content="Send" Classes="accent" Command="{Binding SendCommand}" />
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+
+    <TabControl>
+      <TabItem Header="Body">
+        <DockPanel Margin="0,8,0,0">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,240,*,Auto" Margin="0,0,0,6">
+            <TextBlock Text="Content type" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" IsEditable="True" ItemsSource="{Binding ContentTypes}"
+                      Text="{Binding ContentType}" HorizontalAlignment="Stretch" />
+            <Button Grid.Column="3" Content="Format" Command="{Binding FormatBodyCommand}"
+                    IsVisible="{Binding !IsBinaryBody}" ToolTip.Tip="Pretty-print JSON or XML" />
+          </Grid>
+          <TextBlock DockPanel.Dock="Top" Classes="hint" IsVisible="{Binding IsBinaryBody}" Margin="0,0,0,6"
+                     Text="Binary body: it is shown as hex and resent unchanged." />
+          <TextBlock DockPanel.Dock="Bottom" Classes="hint" Text="{Binding BodyWarning}" Margin="0,4,0,0"
+                     IsVisible="{Binding BodyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBox x:Name="BodyBox" Text="{Binding Body}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                   IsReadOnly="{Binding IsBinaryBody}" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="Properties">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8,0,0">
+            <Grid.Styles>
+              <Style Selector="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+              </Style>
+              <Style Selector="TextBox">
+                <Setter Property="Margin" Value="0,3" />
+              </Style>
+            </Grid.Styles>
+            <TextBlock Grid.Row="0" Text="Message ID" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding MessageId}" PlaceholderText="Generated when empty" />
+            <TextBlock Grid.Row="1" Text="Subject" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Subject}" />
+            <TextBlock Grid.Row="2" Text="Correlation ID" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CorrelationId}" />
+            <TextBlock Grid.Row="3" Text="Session ID" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SessionId}" />
+            <TextBlock Grid.Row="4" Text="Partition key" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding PartitionKey}" PlaceholderText="Must equal the session ID when both are set" />
+            <TextBlock Grid.Row="5" Text="To" />
+            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding To}" />
+            <TextBlock Grid.Row="6" Text="Reply to" />
+            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding ReplyTo}" />
+            <TextBlock Grid.Row="7" Text="Time to live" />
+            <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding TimeToLive}" PlaceholderText="hh:mm:ss, or empty for the entity default" />
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Application properties">
+        <DockPanel Margin="0,8,0,0">
+          <Button DockPanel.Dock="Top" Content="+ Add property" Command="{Binding AddPropertyCommand}" Margin="0,0,0,8" />
+          <ScrollViewer>
+            <ItemsControl x:Name="PropertyRows" ItemsSource="{Binding ApplicationProperties}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ApplicationPropertyRowViewModel">
+                  <Grid ColumnDefinitions="200,*,120,Auto" Margin="0,3" ColumnSpacing="6">
+                    <TextBox Text="{Binding Name}" PlaceholderText="Name" />
+                    <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
+                    <ComboBox Grid.Column="2" HorizontalAlignment="Stretch" SelectedItem="{Binding Type}"
+                              ItemsSource="{Binding $parent[Window].((vm:SendMessageViewModel)DataContext).PropertyTypes}" />
+                    <Button Grid.Column="3" Content="✕" ToolTip.Tip="Remove"
+                            Command="{Binding $parent[Window].((vm:SendMessageViewModel)DataContext).RemovePropertyCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

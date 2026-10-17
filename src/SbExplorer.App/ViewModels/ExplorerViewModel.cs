@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SbExplorer.App.Services;
 using SbExplorer.Core.Connections;
 using SbExplorer.Core.Management;
 
@@ -10,8 +11,12 @@ namespace SbExplorer.App.ViewModels;
 public sealed record PropertyGroupViewModel(string Name, IReadOnlyList<EntityProperty> Items);
 
 /// <summary>The entity tree and details panel for one connected namespace.</summary>
-public partial class ExplorerViewModel(INamespaceSession session, TimeProvider? clock = null) : ObservableObject
+public partial class ExplorerViewModel(INamespaceSession session, IDialogService dialogs, TimeProvider? clock = null)
+    : ObservableObject, IAsyncDisposable
 {
+    // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
+    private readonly Dictionary<string, MessagesViewModel> _messageTabs = [];
+
     private readonly IEntityService _entities = session.Entities;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly FolderNodeViewModel _queues = new("Queues", EntityKind.Queue);
@@ -22,7 +27,7 @@ public partial class ExplorerViewModel(INamespaceSession session, TimeProvider? 
     public IReadOnlyList<FolderNodeViewModel> Roots => [_queues, _topics];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection))]
+    [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages))]
     private TreeNodeViewModel? _selectedNode;
 
     [ObservableProperty]
@@ -36,6 +41,39 @@ public partial class ExplorerViewModel(INamespaceSession session, TimeProvider? 
 
     public EntityInfo? SelectedEntity => SelectedNode?.Entity;
     public bool HasSelection => SelectedEntity is not null;
+
+    public bool HasMessages => Messages is not null;
+
+    /// <summary>The Messages tab for the selected queue or subscription.</summary>
+    public MessagesViewModel? Messages
+    {
+        get
+        {
+            if (SelectedEntity is not { Kind: EntityKind.Queue or EntityKind.Subscription } entity)
+            {
+                return null;
+            }
+
+            if (!_messageTabs.TryGetValue(entity.Path, out var tab) || tab.Entity != entity && !tab.HasLockedMessages)
+            {
+                // Rebuild on fresh entity data, unless the old tab still holds locks the user must settle.
+                tab = new MessagesViewModel(session.Messages, dialogs, entity);
+                _messageTabs[entity.Path] = tab;
+            }
+
+            return tab;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var tab in _messageTabs.Values)
+        {
+            await tab.DisposeAsync();
+        }
+
+        _messageTabs.Clear();
+    }
 
     public IReadOnlyList<PropertyGroupViewModel> PropertyGroups =>
         SelectedEntity?.Properties
