@@ -1,0 +1,27 @@
+# Local Azure Service Bus emulator for integration tests and manual testing.
+#   docker compose -f docker/emulator.yml up -d
+# Connection string:
+#   Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+name: sbx-emulator
+services:
+  emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    volumes:
+      - ./emulator-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      SQL_SERVER: sqlserver
+      MSSQL_SA_PASSWORD: "REDACTED-see-docker-start-emulator-sh"
+      ACCEPT_EULA: "Y"
+      SQL_WAIT_INTERVAL: "15"
+    depends_on:
+      - sqlserver
+  # Azure SQL Edge is retired and crashes on Apple Silicon; SQL Server 2022 runs under emulation there.
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "REDACTED-see-docker-start-emulator-sh"

@@ -5,5 +5,19 @@
              RequestedThemeVariant="Default">
   <Application.Styles>
     <FluentTheme />
+    <Style Selector="TextBlock.error">
+      <Setter Property="Foreground" Value="#D13438" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.success">
+      <Setter Property="Foreground" Value="#2EA043" />
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="#C42B1C" />
+    </Style>
   </Application.Styles>
 </Application>

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using SbExplorer.App.ViewModels;
 using SbExplorer.App.Views;
+using SbExplorer.Core.Connections;
 using Xunit;
 
 namespace SbExplorer.App.Tests;
@@ -9,13 +10,29 @@ namespace SbExplorer.App.Tests;
 public class MainWindowTests
 {
     [AvaloniaFact]
-    public void Shows_not_connected_status_on_startup()
+    public async Task Shows_saved_connections_and_status()
     {
-        var window = new MainWindow { DataContext = new MainWindowViewModel() };
+        var secrets = new FakeSecretStore();
+        var store = new FakeConnectionStore(secrets);
+        await store.SaveAsync(new ConnectionProfile { Name = "Orders" },
+            "Endpoint=sb://orders.servicebus.windows.net/;SharedAccessKeyName=k;SharedAccessKey=v");
+        var vm = new MainWindowViewModel(store, secrets, new FakeConnector(), new FakeDialogs());
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        var window = new MainWindow { DataContext = vm };
         window.Show();
 
-        var status = window.FindControl<TextBlock>("StatusText");
+        Assert.Equal("Not connected", window.FindControl<TextBlock>("StatusText")?.Text);
+        Assert.Equal(1, window.FindControl<ListBox>("ConnectionList")?.ItemCount);
+    }
 
-        Assert.Equal("Not connected", status?.Text);
+    [AvaloniaFact]
+    public void Connection_editor_window_renders()
+    {
+        var window = new ConnectionEditorWindow { DataContext = new ConnectionEditorViewModel(new FakeConnector()) };
+
+        window.Show();
+
+        Assert.Equal("New connection", window.Title);
     }
 }

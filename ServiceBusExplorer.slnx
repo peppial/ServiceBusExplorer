@@ -5,6 +5,9 @@
     <Project Path="src/SbExplorer.App/SbExplorer.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SbExplorer.Core.Tests/SbExplorer.Core.Tests.csproj" />
+    <Project Path="tests/SbExplorer.Infrastructure.Tests/SbExplorer.Infrastructure.Tests.csproj" />
+    <Project Path="tests/SbExplorer.IntegrationTests/SbExplorer.IntegrationTests.csproj" />
     <Project Path="tests/SbExplorer.App.Tests/SbExplorer.App.Tests.csproj" />
   </Folder>
 </Solution>
