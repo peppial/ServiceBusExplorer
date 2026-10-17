@@ -1,10 +1,17 @@
+using SbExplorer.Core.Management;
+
 namespace SbExplorer.Core.Connections;
 
-/// <summary>An open connection to one namespace. Later steps hang entity and message services off this.</summary>
+/// <summary>An open connection to one namespace.</summary>
 public interface INamespaceSession : IAsyncDisposable
 {
     ConnectionProfile Profile { get; }
     string FullyQualifiedNamespace { get; }
+
+    /// <summary>The local Service Bus emulator, which reports zero for most runtime message counts.</summary>
+    bool IsEmulator { get; }
+
+    IEntityService Entities { get; }
 }
 
 public interface INamespaceConnector

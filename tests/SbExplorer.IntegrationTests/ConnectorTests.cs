@@ -15,6 +15,7 @@ public class ConnectorTests
             .ConnectAsync(profile, Emulator.ConnectionString, TestContext.Current.CancellationToken);
 
         Assert.Equal("localhost", session.FullyQualifiedNamespace);
+        Assert.True(session.IsEmulator);
     }
 
     [Fact]

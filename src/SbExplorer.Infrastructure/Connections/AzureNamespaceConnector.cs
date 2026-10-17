@@ -1,6 +1,8 @@
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using SbExplorer.Core.Connections;
+using SbExplorer.Core.Management;
+using SbExplorer.Infrastructure.Management;
 
 namespace SbExplorer.Infrastructure.Connections;
 
@@ -43,6 +45,7 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
         return new AzureNamespaceSession(
             profile,
             info!.FullyQualifiedNamespace,
+            info.UseDevelopmentEmulator,
             new ServiceBusClient(secret),
             new ServiceBusAdministrationClient(ConnectionStringInfo.ForAdministration(secret!)));
     }
@@ -59,6 +62,7 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
         return new AzureNamespaceSession(
             profile,
             host,
+            IsEmulator: false,
             new ServiceBusClient(host, credential),
             new ServiceBusAdministrationClient(host, credential));
     }
@@ -67,13 +71,16 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
 public sealed class AzureNamespaceSession(
     ConnectionProfile profile,
     string fullyQualifiedNamespace,
+    bool IsEmulator,
     ServiceBusClient client,
     ServiceBusAdministrationClient administration) : INamespaceSession
 {
     public ConnectionProfile Profile { get; } = profile;
     public string FullyQualifiedNamespace { get; } = fullyQualifiedNamespace;
+    public bool IsEmulator { get; } = IsEmulator;
     public ServiceBusClient Client { get; } = client;
     public ServiceBusAdministrationClient Administration { get; } = administration;
+    public IEntityService Entities { get; } = new AzureEntityService(administration);
 
     public ValueTask DisposeAsync() => Client.DisposeAsync();
 }

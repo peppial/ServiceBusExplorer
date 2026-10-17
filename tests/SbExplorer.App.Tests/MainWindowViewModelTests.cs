@@ -108,6 +108,20 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Connect_loads_the_entity_tree_and_disconnect_clears_it()
+    {
+        await SeedAndSelectAsync();
+
+        await _vm.ConnectCommand.ExecuteAsync(null);
+        Assert.NotNull(_vm.Explorer);
+        Assert.NotNull(_vm.Explorer.LoadStatus);
+        Assert.False(_vm.Explorer.HasError);
+
+        await _vm.DisconnectCommand.ExecuteAsync(null);
+        Assert.Null(_vm.Explorer);
+    }
+
+    [Fact]
     public async Task Disconnect_disposes_session()
     {
         await SeedAndSelectAsync();

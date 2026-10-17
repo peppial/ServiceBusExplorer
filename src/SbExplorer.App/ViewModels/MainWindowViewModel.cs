@@ -21,9 +21,12 @@ public partial class MainWindowViewModel(
     private ConnectionItemViewModel? _selectedConnection;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(ConnectedTitle))]
+    [NotifyPropertyChangedFor(nameof(IsConnected))]
     [NotifyCanExecuteChangedFor(nameof(DisconnectCommand))]
     private INamespaceSession? _session;
+
+    [ObservableProperty]
+    private ExplorerViewModel? _explorer;
 
     [ObservableProperty]
     private string _status = "Not connected";
@@ -32,7 +35,6 @@ public partial class MainWindowViewModel(
     private bool _hasError;
 
     public bool IsConnected => Session is not null;
-    public string ConnectedTitle => Session is null ? string.Empty : $"{Session.Profile.Name} — {Session.FullyQualifiedNamespace}";
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -122,6 +124,8 @@ public partial class MainWindowViewModel(
             Session = await connector.ConnectAsync(item.Profile, secret, cancellationToken);
             item.IsConnected = true;
             SetStatus($"Connected to {Session.FullyQualifiedNamespace}");
+            Explorer = new ExplorerViewModel(Session);
+            await Explorer.RefreshCommand.ExecuteAsync(null);
         }
         catch (OperationCanceledException)
         {
@@ -142,6 +146,8 @@ public partial class MainWindowViewModel(
         }
 
         var session = Session;
+        Explorer?.RefreshCancelCommand.Execute(null);
+        Explorer = null;
         Session = null;
         foreach (var item in Connections.Where(c => c.Profile.Id == session.Profile.Id))
         {
