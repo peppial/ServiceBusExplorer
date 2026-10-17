@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SbExplorer.App.Views.ChoiceWindow"
+        Width="480" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="20" Spacing="16">
+    <SelectableTextBlock x:Name="MessageText" TextWrapping="Wrap" />
+    <StackPanel x:Name="Buttons" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" />
+  </StackPanel>
+</Window>

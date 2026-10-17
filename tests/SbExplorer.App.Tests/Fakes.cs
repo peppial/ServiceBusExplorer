@@ -139,6 +139,16 @@ internal sealed class FakeDialogs : IDialogService
         return Task.CompletedTask;
     }
 
+    public Func<EntityEditorViewModel, Task<bool>> OnEntityEditor { get; set; } = _ => Task.FromResult(false);
+    public string? OpenFileText { get; set; }
+    public int? ChooseResult { get; set; }
+
+    public Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor) => OnEntityEditor(editor);
+
+    public Task<string?> OpenTextFileAsync(string title) => Task.FromResult(OpenFileText);
+
+    public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> options) => Task.FromResult(ChooseResult);
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmText)
     {
         ConfirmCount++;
@@ -198,6 +208,103 @@ internal sealed class FakeEntityService : IEntityService
         RuleLoads++;
         return Task.FromResult<IReadOnlyList<EntityInfo>>(
             Rules.GetValueOrDefault(EntityInfo.SubscriptionPath(topic, subscription))?.ToList() ?? []);
+    }
+
+    // ---- definitions: stored by path; creating one also adds it to the tree lists ----
+
+    public Dictionary<string, object> Definitions { get; } = [];
+    public List<string> Calls { get; } = [];
+    public Exception? WriteFailure { get; set; }
+
+    public Task<QueueDefinition> GetQueueAsync(string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult((QueueDefinition)Definitions[name]);
+
+    public Task<TopicDefinition> GetTopicAsync(string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult((TopicDefinition)Definitions[name]);
+
+    public Task<SubscriptionDefinition> GetSubscriptionAsync(string topic, string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult((SubscriptionDefinition)Definitions[EntityInfo.SubscriptionPath(topic, name)]);
+
+    public Task<RuleDefinition> GetRuleAsync(string topic, string subscription, string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult((RuleDefinition)Definitions[EntityInfo.RulePath(topic, subscription, name)]);
+
+    public Task CreateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) => Write($"create queue {queue.Name}", () =>
+    {
+        Definitions[queue.Name] = queue;
+        Queues.Add(Queue(queue.Name) with { RequiresSession = queue.RequiresSession });
+    });
+
+    public Task CreateTopicAsync(TopicDefinition topic, CancellationToken cancellationToken = default) => Write($"create topic {topic.Name}", () =>
+    {
+        Definitions[topic.Name] = topic;
+        Topics.Add(Topic(topic.Name));
+    });
+
+    public Task CreateSubscriptionAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken = default) =>
+        Write($"create subscription {subscription.Topic}/{subscription.Name} rules={subscription.Rules.Count}", () =>
+        {
+            var path = EntityInfo.SubscriptionPath(subscription.Topic, subscription.Name);
+            Definitions[path] = subscription;
+            (Subscriptions.TryGetValue(subscription.Topic, out var list) ? list : Subscriptions[subscription.Topic] = [])
+                .Add(Subscription(subscription.Topic, subscription.Name));
+            var rule = subscription.Rules.FirstOrDefault() ?? new RuleDefinition { Name = RuleDefinition.DefaultName, FilterKind = RuleFilterKind.True };
+            AddRule(subscription.Topic, subscription.Name, rule);
+        });
+
+    public Task CreateRuleAsync(string topic, string subscription, RuleDefinition rule, CancellationToken cancellationToken = default) =>
+        Write($"create rule {topic}/{subscription}/{rule.Name}", () => AddRule(topic, subscription, rule));
+
+    public Task UpdateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) =>
+        Write($"update queue {queue.Name}", () => Definitions[queue.Name] = queue);
+
+    public Task UpdateTopicAsync(TopicDefinition topic, CancellationToken cancellationToken = default) =>
+        Write($"update topic {topic.Name}", () => Definitions[topic.Name] = topic);
+
+    public Task UpdateSubscriptionAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken = default) =>
+        Write($"update subscription {subscription.Topic}/{subscription.Name}",
+            () => Definitions[EntityInfo.SubscriptionPath(subscription.Topic, subscription.Name)] = subscription);
+
+    public Task UpdateRuleAsync(string topic, string subscription, RuleDefinition rule, CancellationToken cancellationToken = default) =>
+        Write($"update rule {topic}/{subscription}/{rule.Name}", () => Definitions[EntityInfo.RulePath(topic, subscription, rule.Name)] = rule);
+
+    public Task DeleteAsync(EntityInfo entity, CancellationToken cancellationToken = default) => Write($"delete {entity.Path}", () =>
+    {
+        Definitions.Remove(entity.Path);
+        Queues.RemoveAll(q => q.Path == entity.Path);
+        Topics.RemoveAll(t => t.Path == entity.Path);
+        foreach (var list in Subscriptions.Values)
+        {
+            list.RemoveAll(s => s.Path == entity.Path);
+        }
+    });
+
+    public Task SetStatusAsync(EntityInfo entity, EntityStatusValue status, CancellationToken cancellationToken = default) =>
+        Write($"status {entity.Path} {status}", () =>
+        {
+            var index = Queues.FindIndex(q => q.Path == entity.Path);
+            if (index >= 0)
+            {
+                Queues[index] = Queues[index] with { Status = status.ToString() };
+            }
+        });
+
+    private void AddRule(string topic, string subscription, RuleDefinition rule)
+    {
+        var key = EntityInfo.SubscriptionPath(topic, subscription);
+        Definitions[EntityInfo.RulePath(topic, subscription, rule.Name)] = rule;
+        (Rules.TryGetValue(key, out var list) ? list : Rules[key] = []).Add(Rule(topic, subscription, rule.Name));
+    }
+
+    private Task Write(string call, Action apply)
+    {
+        Calls.Add(call);
+        if (WriteFailure is not null)
+        {
+            return Task.FromException(WriteFailure);
+        }
+
+        apply();
+        return Task.CompletedTask;
     }
 }
 

@@ -59,6 +59,36 @@ public sealed class DialogService : IDialogService
         }
     }
 
+    public async Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor)
+    {
+        var window = new EntityEditorWindow { DataContext = editor };
+        return await window.ShowDialog<bool?>(Owner) == true;
+    }
+
+    public async Task<string?> OpenTextFileAsync(string title)
+    {
+        var files = await Owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }, FilePickerFileTypes.All],
+        });
+        if (files.Count == 0)
+        {
+            return null;
+        }
+
+        await using var stream = await files[0].OpenReadAsync();
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
+    public async Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> options)
+    {
+        var window = new ChoiceWindow(message, options) { Title = title };
+        return await window.ShowDialog<int?>(Owner);
+    }
+
     private static Window Owner =>
         (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow
         ?? throw new InvalidOperationException("Dialogs need a main window.");

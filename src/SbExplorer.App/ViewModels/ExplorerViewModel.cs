@@ -19,6 +19,9 @@ public partial class ExplorerViewModel(
     : ObservableObject, IAsyncDisposable
 {
     private readonly List<string> _pinned = [.. session.Profile.PinnedEntities];
+    private readonly NamespaceTransfer _transfer = new(session.Entities);
+    private readonly HashSet<string> _expandAfterRefresh = [];
+    private string? _selectAfterRefresh;
     private readonly FolderNodeViewModel _pinnedFolder = new("Entities", EntityKind.Queue);
 
     // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
@@ -130,9 +133,12 @@ public partial class ExplorerViewModel(
     {
         // Remember what the user had open so a refresh doesn't collapse the tree.
         var expanded = AllEntityNodes().Where(n => n.IsExpanded).Select(n => n.Entity.Path).ToHashSet();
+        expanded.UnionWith(_expandAfterRefresh);
+        _expandAfterRefresh.Clear();
         var expandFolders = (Queues: _queues.IsExpanded || _queues.Children.Count == 0, Topics: _topics.IsExpanded || _topics.Children.Count == 0);
-        var selectedPath = SelectedNode?.Entity?.Path;
-        TreeNodeViewModel? selectedFolder = SelectedNode as FolderNodeViewModel;
+        var selectedPath = _selectAfterRefresh ?? SelectedNode?.Entity?.Path;
+        TreeNodeViewModel? selectedFolder = _selectAfterRefresh is null ? SelectedNode as FolderNodeViewModel : null;
+        _selectAfterRefresh = null;
 
         LoadStatus = "Loading…";
         HasError = false;
@@ -214,7 +220,236 @@ public partial class ExplorerViewModel(
     private bool CanRemoveEntity() =>
         IsLimited && SelectedEntity is { } entity && !string.Equals(entity.Path, session.ScopedEntity, StringComparison.OrdinalIgnoreCase);
 
-    partial void OnSelectedNodeChanged(TreeNodeViewModel? value) => RemoveEntityCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedNodeChanged(TreeNodeViewModel? value)
+    {
+        foreach (var command in new IRelayCommand[]
+                 {
+                     RemoveEntityCommand, NewSubscriptionCommand, NewRuleCommand, EditCommand, DeleteCommand, SetStatusCommand,
+                 })
+        {
+            command.NotifyCanExecuteChanged();
+        }
+    }
+
+    public bool CanManage => session.CanManage;
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private Task NewQueueAsync() => EditAsync(EntityEditorViewModel.NewQueue(_entities));
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private Task NewTopicAsync() => EditAsync(EntityEditorViewModel.NewTopic(_entities));
+
+    [RelayCommand(CanExecute = nameof(HasTopicContext))]
+    private Task NewSubscriptionAsync() => EditAsync(EntityEditorViewModel.NewSubscription(_entities, SelectedTopic!));
+
+    [RelayCommand(CanExecute = nameof(HasSubscriptionContext))]
+    private Task NewRuleAsync()
+    {
+        var (topic, subscription) = SelectedSubscription!.Value;
+        return EditAsync(EntityEditorViewModel.NewRule(_entities, topic, subscription));
+    }
+
+    [RelayCommand(CanExecute = nameof(HasManageableSelection))]
+    private async Task EditAsync()
+    {
+        try
+        {
+            await EditAsync(await EntityEditorViewModel.EditAsync(_entities, SelectedEntity!));
+        }
+        catch (Exception ex)
+        {
+            ReportError($"Could not open {SelectedEntity?.Name}: {ErrorMessages.Describe(ex)}");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasManageableSelection))]
+    private async Task DeleteAsync()
+    {
+        var entity = SelectedEntity!;
+        var kind = entity.Kind.ToString().ToLowerInvariant();
+        if (entity.Kind == EntityKind.Rule)
+        {
+            if (!await dialogs.ConfirmAsync("Delete rule", $"Delete the rule '{entity.Name}'? Messages it would have matched won't reach this subscription.", "Delete"))
+            {
+                return;
+            }
+        }
+        else
+        {
+            var consequence = entity.Kind == EntityKind.Topic
+                ? "the topic, all of its subscriptions and every message in them"
+                : $"the {kind} and every message in it";
+            var typed = await dialogs.PromptAsync($"Delete {kind}", $"This permanently deletes {consequence}. Type '{entity.Name}' to confirm:", string.Empty);
+            if (typed is null)
+            {
+                return;
+            }
+
+            if (!string.Equals(typed.Trim(), entity.Name, StringComparison.Ordinal))
+            {
+                ReportError($"Not deleted: '{typed.Trim()}' doesn't match '{entity.Name}'.");
+                return;
+            }
+        }
+
+        try
+        {
+            await _entities.DeleteAsync(entity);
+            _messageTabs.Remove(entity.Path);
+            _sessionTabs.Remove(entity.Path);
+            SelectedNode = null;
+            await RefreshCommand.ExecuteAsync(null);
+            LoadStatus = $"Deleted {kind} {entity.Path}.";
+        }
+        catch (Exception ex)
+        {
+            ReportError($"Could not delete {entity.Path}: {ErrorMessages.Describe(ex)}");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangeStatus))]
+    private async Task SetStatusAsync(EntityStatusValue status)
+    {
+        var entity = SelectedEntity!;
+        try
+        {
+            await _entities.SetStatusAsync(entity, status);
+            await ReloadAndSelectAsync(entity.Path);
+            LoadStatus = $"{entity.Path} is now {status}.";
+        }
+        catch (Exception ex)
+        {
+            ReportError($"Could not change the status of {entity.Path}: {ErrorMessages.Describe(ex)}");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private async Task ExportAsync()
+    {
+        IReadOnlyCollection<EntityInfo>? only = null;
+        if (SelectedEntity is { } selected)
+        {
+            var choice = await dialogs.ChooseAsync("Export", $"Export the definition of {selected.Path}, or of every entity in the namespace?",
+                [$"Only {selected.Name}", "Whole namespace"]);
+            if (choice is null)
+            {
+                return;
+            }
+
+            only = choice == 0 ? [selected] : null;
+        }
+
+        try
+        {
+            LoadStatus = "Exporting…";
+            HasError = false;
+            var definition = await _transfer.ExportAsync(session.FullyQualifiedNamespace, only);
+            var name = only is null ? session.FullyQualifiedNamespace.Split('.')[0] : only.First().Name;
+            var json = System.Text.Encoding.UTF8.GetBytes(NamespaceTransfer.Serialize(definition));
+            LoadStatus = await dialogs.SaveFileAsync($"{name}-entities.json", json)
+                ? $"Exported {Plural(definition.EntityCount, "entity definition", "entity definitions")}."
+                : "Export cancelled.";
+        }
+        catch (Exception ex)
+        {
+            ReportError($"Export failed: {ErrorMessages.Describe(ex)}");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private async Task ImportAsync()
+    {
+        var json = await dialogs.OpenTextFileAsync("Import entity definitions");
+        if (json is null)
+        {
+            return;
+        }
+
+        NamespaceDefinition definition;
+        try
+        {
+            definition = NamespaceTransfer.Deserialize(json);
+        }
+        catch (Exception ex)
+        {
+            ReportError($"That file isn't an entity export: {ex.Message.Split('\n')[0]}");
+            return;
+        }
+
+        var choice = await dialogs.ChooseAsync("Import",
+            $"Import {Plural(definition.EntityCount, "entity", "entities")} into {session.FullyQualifiedNamespace}. What should happen to entities that already exist?",
+            ["Skip existing", "Overwrite existing"]);
+        if (choice is null)
+        {
+            return;
+        }
+
+        var progress = new Progress<ImportItemResult>(r => LoadStatus = $"Importing… {r.Path}: {r.Outcome}");
+        var results = await _transfer.ImportAsync(definition, overwrite: choice == 1, progress);
+        await RefreshCommand.ExecuteAsync(null);
+
+        var summary = string.Join(", ", results.GroupBy(r => r.Outcome).Select(g => $"{g.Count()} {g.Key.ToString().ToLowerInvariant()}"));
+        var failures = results.Where(r => r.Outcome == ImportOutcome.Failed).ToList();
+        LoadStatus = $"Import finished: {summary}.";
+        HasError = failures.Count > 0;
+        if (failures.Count > 0)
+        {
+            await dialogs.ChooseAsync("Import finished with errors",
+                string.Join("\n", failures.Select(f => $"{f.Path}: {f.Error}")), ["OK"]);
+        }
+    }
+
+    private async Task EditAsync(EntityEditorViewModel editor)
+    {
+        if (await dialogs.ShowEntityEditorAsync(editor) && editor.SavedPath is { } path)
+        {
+            await ReloadAndSelectAsync(path);
+            LoadStatus = $"{(editor.IsNew ? "Created" : "Saved")} {path}.";
+        }
+    }
+
+    /// <summary>Refreshes the tree, expanding the parents of <paramref name="path"/> and selecting it.</summary>
+    private async Task ReloadAndSelectAsync(string path)
+    {
+        var parts = path.Split('/');
+        if (parts.Length >= 3)
+        {
+            _expandAfterRefresh.Add(parts[0]);
+        }
+
+        if (parts.Length >= 5)
+        {
+            _expandAfterRefresh.Add(EntityInfo.SubscriptionPath(parts[0], parts[2]));
+        }
+
+        _selectAfterRefresh = path;
+        await RefreshCommand.ExecuteAsync(null);
+    }
+
+    private void ReportError(string message)
+    {
+        LoadStatus = message;
+        HasError = true;
+    }
+
+    private string? SelectedTopic => SelectedEntity switch
+    {
+        { Kind: EntityKind.Topic } topic => topic.Name,
+        { Kind: EntityKind.Subscription or EntityKind.Rule } child => child.Path.Split('/')[0],
+        _ => null,
+    };
+
+    private (string Topic, string Subscription)? SelectedSubscription => SelectedEntity switch
+    {
+        { Kind: EntityKind.Subscription } s => (s.Path.Split('/')[0], s.Name),
+        { Kind: EntityKind.Rule } r => (r.Path.Split('/')[0], r.Path.Split('/')[2]),
+        _ => null,
+    };
+
+    private bool HasTopicContext() => CanManage && SelectedTopic is not null;
+    private bool HasSubscriptionContext() => CanManage && SelectedSubscription is not null;
+    private bool HasManageableSelection() => CanManage && SelectedEntity is not null;
+    private bool CanChangeStatus(EntityStatusValue status) => HasManageableSelection() && SelectedEntity!.Kind != EntityKind.Rule;
 
     private void ShowPinnedEntities(string? selectedPath)
     {

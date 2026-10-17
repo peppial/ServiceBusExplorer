@@ -1,0 +1,186 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SbExplorer.App.ViewModels"
+        xmlns:mgmt="using:SbExplorer.Core.Management"
+        x:Class="SbExplorer.App.Views.EntityEditorWindow"
+        x:DataType="vm:EntityEditorViewModel"
+        Title="{Binding Title}"
+        Width="720" Height="760" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="Grid.form > TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <Style Selector="Grid.form > TextBox, Grid.form > NumericUpDown, Grid.form > ComboBox">
+      <Setter Property="Margin" Value="0,3" />
+    </Style>
+    <Style Selector="Grid.form > CheckBox">
+      <Setter Property="Margin" Value="0,2" />
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,14,0,4" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+      <TextBlock Text="{Binding ValidationError}" Classes="error" TextWrapping="Wrap" IsVisible="{Binding !IsValid}" />
+      <TextBlock Text="{Binding SaveError}" Classes="error" TextWrapping="Wrap"
+                 IsVisible="{Binding SaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+        <Button Content="Cancel" IsCancel="True" Click="OnCancel" />
+        <Button x:Name="SaveButton" Content="{Binding IsNew, Converter={x:Static vm:Converters.CreateOrSave}}"
+                Classes="accent" Command="{Binding SaveCommand}" />
+      </StackPanel>
+    </StackPanel>
+
+    <ScrollViewer>
+      <StackPanel Margin="0,0,12,0">
+        <!-- Name -->
+        <Grid Classes="form" ColumnDefinitions="230,*" IsVisible="{Binding HasEntitySettings}">
+          <TextBlock Text="Name" />
+          <TextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name}" IsEnabled="{Binding IsNew}" />
+        </Grid>
+
+        <!-- Delivery -->
+        <StackPanel IsVisible="{Binding HasEntitySettings}">
+          <TextBlock Classes="section" Text="Messages" />
+          <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Lock duration" IsVisible="{Binding HasLockSettings}" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding LockDuration}" IsVisible="{Binding HasLockSettings}"
+                     PlaceholderText="30s, 1m, up to 5m" />
+            <TextBlock Grid.Row="1" Text="Max delivery count" IsVisible="{Binding HasLockSettings}" />
+            <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaxDeliveryCount}" Minimum="1" Maximum="2000"
+                           FormatString="0" ParsingNumberStyle="Integer" IsVisible="{Binding HasLockSettings}" />
+            <TextBlock Grid.Row="2" Text="Default message time to live" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DefaultMessageTimeToLive}" PlaceholderText="1h, 14d or Never" />
+            <TextBlock Grid.Row="3" Text="Auto-delete when idle for" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding AutoDeleteOnIdle}" PlaceholderText="Never, or at least 5m" />
+            <CheckBox Grid.Row="4" Grid.Column="1" Content="Dead-letter expired messages"
+                      IsChecked="{Binding DeadLetteringOnMessageExpiration}" IsVisible="{Binding HasLockSettings}" />
+            <CheckBox Grid.Row="5" Grid.Column="1" Content="Dead-letter on filter evaluation errors"
+                      IsChecked="{Binding DeadLetteringOnFilterEvaluationExceptions}" IsVisible="{Binding IsSubscription}" />
+            <CheckBox Grid.Row="6" Grid.Column="1" Content="Batched operations" IsChecked="{Binding EnableBatchedOperations}" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Creation-only settings -->
+        <StackPanel IsVisible="{Binding HasEntitySettings}">
+          <TextBlock Classes="section" Text="Features" />
+          <TextBlock Classes="hint" Text="These can only be chosen when the entity is created." IsVisible="{Binding IsEdit}" />
+          <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+            <CheckBox Grid.Row="0" Grid.Column="1" Content="Requires session" IsChecked="{Binding RequiresSession}"
+                      IsEnabled="{Binding CanChangeCreationOnlySettings}" IsVisible="{Binding HasLockSettings}" />
+            <CheckBox Grid.Row="1" Grid.Column="1" Content="Duplicate detection" IsChecked="{Binding RequiresDuplicateDetection}"
+                      IsEnabled="{Binding CanChangeCreationOnlySettings}" IsVisible="{Binding HasSizeSettings}" />
+            <TextBlock Grid.Row="2" Text="Duplicate detection window" IsVisible="{Binding RequiresDuplicateDetection}" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DuplicateDetectionWindow}" PlaceholderText="10m, up to 7d"
+                     IsVisible="{Binding RequiresDuplicateDetection}" />
+            <CheckBox Grid.Row="3" Grid.Column="1" Content="Partitioning" IsChecked="{Binding EnablePartitioning}"
+                      IsEnabled="{Binding CanChangeCreationOnlySettings}" IsVisible="{Binding HasSizeSettings}" />
+            <CheckBox Grid.Row="4" Grid.Column="1" Content="Support ordering" IsChecked="{Binding SupportOrdering}"
+                      IsVisible="{Binding IsTopic}" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Size -->
+        <StackPanel IsVisible="{Binding HasSizeSettings}">
+          <TextBlock Classes="section" Text="Size" />
+          <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Max size (MB)" />
+            <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding MaxSizeInMegabytes}" Minimum="1" Maximum="81920"
+                           Increment="1024" FormatString="0" ParsingNumberStyle="Integer" />
+            <TextBlock Grid.Row="1" Text="Max message size (KB)" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxMessageSizeInKilobytes}"
+                     PlaceholderText="Premium only; empty for the default" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Forwarding & status -->
+        <StackPanel IsVisible="{Binding HasEntitySettings}">
+          <TextBlock Classes="section" Text="Forwarding and status" />
+          <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Forward messages to" IsVisible="{Binding !IsTopic}" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ForwardTo}" PlaceholderText="Queue or topic name"
+                     IsVisible="{Binding !IsTopic}" />
+            <TextBlock Grid.Row="1" Text="Forward dead letters to" IsVisible="{Binding !IsTopic}" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ForwardDeadLetteredMessagesTo}" PlaceholderText="Queue or topic name"
+                     IsVisible="{Binding !IsTopic}" />
+            <TextBlock Grid.Row="2" Text="Status" />
+            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding Statuses}" SelectedItem="{Binding SelectedStatus}" />
+            <TextBlock Grid.Row="3" Text="User metadata" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding UserMetadata}" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Rule -->
+        <CheckBox Content="Start with a filter instead of receiving every message" IsChecked="{Binding UseInitialRule}"
+                  Margin="0,14,0,0" IsVisible="{Binding IsSubscription}" IsEnabled="{Binding IsNew}" />
+        <StackPanel IsVisible="{Binding ShowsRuleEditor}">
+          <TextBlock Classes="section" Text="Rule" />
+          <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Rule name" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding RuleName}" IsEnabled="{Binding IsNew}" />
+            <TextBlock Grid.Row="1" Text="Filter" />
+            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding FilterKinds}" SelectedItem="{Binding SelectedFilterKind}"
+                      HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:FilterKindOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+          <StackPanel IsVisible="{Binding IsSqlFilter}" Margin="0,6,0,0" Spacing="4">
+            <TextBlock Text="SQL expression" Opacity="0.8" />
+            <TextBox Text="{Binding SqlExpression}" AcceptsReturn="True" Height="70" TextWrapping="Wrap"
+                     FontFamily="{StaticResource MonoFont}" PlaceholderText="priority = 'high' AND region IN ('eu', 'us')" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding IsCorrelationFilter}" Margin="0,6,0,0">
+            <TextBlock Classes="hint" Text="A message matches when every field you fill in equals the message's value." Margin="0,0,0,4" />
+            <Grid Classes="form" ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Text="Subject" />
+              <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding CorrelationSubject}" />
+              <TextBlock Grid.Row="1" Text="Correlation ID" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding CorrelationId}" />
+              <TextBlock Grid.Row="2" Text="Message ID" />
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CorrelationMessageId}" />
+              <TextBlock Grid.Row="3" Text="Session ID" />
+              <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding CorrelationSessionId}" />
+              <TextBlock Grid.Row="4" Text="To" />
+              <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding CorrelationTo}" />
+              <TextBlock Grid.Row="5" Text="Reply to" />
+              <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding CorrelationReplyTo}" />
+              <TextBlock Grid.Row="6" Text="Content type" />
+              <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding CorrelationContentType}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
+              <TextBlock Text="Application properties" Opacity="0.8" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="+ Add property" Command="{Binding AddRulePropertyCommand}" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding RuleProperties}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:KeyValueRowViewModel">
+                  <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="6" Margin="0,3">
+                    <TextBox Text="{Binding Key}" PlaceholderText="Name" />
+                    <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
+                    <Button Grid.Column="2" Content="✕" ToolTip.Tip="Remove"
+                            Command="{Binding $parent[Window].((vm:EntityEditorViewModel)DataContext).RemoveRulePropertyCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          <StackPanel Margin="0,10,0,0" Spacing="4">
+            <TextBlock Text="SQL action (optional)" Opacity="0.8" />
+            <TextBox Text="{Binding ActionSqlExpression}" FontFamily="{StaticResource MonoFont}"
+                     PlaceholderText="SET escalated = 'true'" />
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

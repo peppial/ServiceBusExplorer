@@ -19,4 +19,13 @@ public interface IDialogService
     Task<bool> SaveFileAsync(string suggestedName, ReadOnlyMemory<byte> content);
 
     Task CopyTextAsync(string text);
+
+    /// <summary>Create/edit entity dialog; true when saved.</summary>
+    Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor);
+
+    /// <summary>Lets the user pick a file and returns its text; null when cancelled.</summary>
+    Task<string?> OpenTextFileAsync(string title);
+
+    /// <summary>Shows a message with one button per option; returns the chosen index, or null when cancelled.</summary>
+    Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> options);
 }

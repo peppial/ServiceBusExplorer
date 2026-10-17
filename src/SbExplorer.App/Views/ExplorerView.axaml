@@ -13,6 +13,33 @@
                    Classes.error="{Binding HasError}" TextTrimming="CharacterEllipsis" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <DropDownButton x:Name="NewMenu" Content="+ New" IsVisible="{Binding CanManage}">
+          <DropDownButton.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="Queue…" Command="{Binding NewQueueCommand}" />
+              <MenuItem Header="Topic…" Command="{Binding NewTopicCommand}" />
+              <MenuItem Header="Subscription on selected topic…" Command="{Binding NewSubscriptionCommand}" />
+              <MenuItem Header="Rule on selected subscription…" Command="{Binding NewRuleCommand}" />
+            </MenuFlyout>
+          </DropDownButton.Flyout>
+        </DropDownButton>
+        <DropDownButton x:Name="ActionsMenu" Content="Actions" IsVisible="{Binding CanManage}">
+          <DropDownButton.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="Edit…" Command="{Binding EditCommand}" />
+              <MenuItem Header="Status">
+                <MenuItem Header="Active" Command="{Binding SetStatusCommand}" CommandParameter="{x:Static mgmt:EntityStatusValue.Active}" />
+                <MenuItem Header="Disabled" Command="{Binding SetStatusCommand}" CommandParameter="{x:Static mgmt:EntityStatusValue.Disabled}" />
+                <MenuItem Header="Send disabled" Command="{Binding SetStatusCommand}" CommandParameter="{x:Static mgmt:EntityStatusValue.SendDisabled}" />
+                <MenuItem Header="Receive disabled" Command="{Binding SetStatusCommand}" CommandParameter="{x:Static mgmt:EntityStatusValue.ReceiveDisabled}" />
+              </MenuItem>
+              <MenuItem Header="Delete…" Command="{Binding DeleteCommand}" />
+              <Separator />
+              <MenuItem Header="Export definitions…" Command="{Binding ExportCommand}" />
+              <MenuItem Header="Import definitions…" Command="{Binding ImportCommand}" />
+            </MenuFlyout>
+          </DropDownButton.Flyout>
+        </DropDownButton>
         <Button Content="Cancel" Command="{Binding RefreshCancelCommand}"
                 IsVisible="{Binding RefreshCommand.IsRunning}" />
         <Button x:Name="RefreshButton" Content="⟳ Refresh" Command="{Binding RefreshCommand}"
