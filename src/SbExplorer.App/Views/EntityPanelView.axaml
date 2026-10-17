@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             xmlns:mgmt="using:SbExplorer.Core.Management"
+             xmlns:views="using:SbExplorer.App.Views"
+             x:Class="SbExplorer.App.Views.EntityPanelView"
+             x:DataType="vm:EntityPanelViewModel">
+  <DockPanel>
+    <!-- Button bar, right-aligned like the original. -->
+    <WrapPanel DockPanel.Dock="Bottom" HorizontalAlignment="Right" ItemSpacing="6" LineSpacing="6" Margin="0,8,0,0">
+      <Button Content="Sessions" Command="{Binding SessionsCommand}" IsVisible="{Binding SupportsSessions}" />
+      <Button Content="Messages" Command="{Binding MessagesCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Dead-letter" Command="{Binding DeadletterCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Transf DLQ" Command="{Binding TransferDeadletterCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Purge" Command="{Binding PurgeCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Purge DLQ" Command="{Binding PurgeDeadletterCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Send Messages" Command="{Binding SendCommand}" IsVisible="{Binding !IsRule}" />
+      <Button Content="Create Subscription" Command="{Binding CreateSubscriptionCommand}" IsVisible="{Binding IsTopic}" />
+      <Button Content="Add Rule" Command="{Binding AddRuleCommand}" IsVisible="{Binding IsSubscription}" />
+      <Button Content="Close Tabs" Command="{Binding CloseTabsCommand}" IsVisible="{Binding SupportsMessages}" />
+      <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+      <Button Content="{Binding StatusButtonLabel}" Command="{Binding ToggleStatusCommand}" IsVisible="{Binding HasStatus}" />
+      <Button Content="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding CanManage}" />
+      <Button x:Name="UpdateButton" Content="Update" Command="{Binding UpdateCommand}" IsVisible="{Binding CanManage}" />
+    </WrapPanel>
+
+    <TabControl x:Name="DetailTabs" SelectedIndex="{Binding SelectedTab}">
+      <TabItem Header="Description">
+        <Border Classes="white" Padding="8" Background="{StaticResource WindowBrush}">
+          <Grid ColumnDefinitions="*,12,320">
+            <ScrollViewer>
+              <Panel>
+                <views:EntityFormView DataContext="{Binding Editor}"
+                                      IsVisible="{Binding $parent[views:EntityPanelView].((vm:EntityPanelViewModel)DataContext).Editor, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <TextBlock Text="{Binding EditorError}" Classes="error" TextWrapping="Wrap"
+                           IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="Settings can't be read or changed without the Manage claim." Opacity="0.7" TextWrapping="Wrap"
+                           IsVisible="{Binding !CanManage}" />
+              </Panel>
+            </ScrollViewer>
+            <HeaderedContentControl Grid.Column="2" Classes="group" Header="{Binding InformationTitle}" VerticalAlignment="Top">
+              <Border Classes="white">
+                <StackPanel>
+                  <Grid ColumnDefinitions="*,*" Background="{StaticResource WindowBrush}">
+                    <TextBlock Text="Name" Margin="6,2" />
+                    <TextBlock Grid.Column="1" Text="Value" Margin="6,2" />
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding Information}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="mgmt:EntityProperty">
+                        <Grid ColumnDefinitions="*,*" Margin="6,1">
+                          <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </HeaderedContentControl>
+          </Grid>
+        </Border>
+      </TabItem>
+      <TabItem Header="Messages" IsVisible="{Binding ShowMessagesTab}">
+        <views:MessagesView DataContext="{Binding Messages}" Margin="0,6,0,0" />
+      </TabItem>
+      <TabItem Header="Deadletter" IsVisible="{Binding ShowDeadletterTab}">
+        <views:MessagesView DataContext="{Binding DeadLetters}" Margin="0,6,0,0" />
+      </TabItem>
+      <TabItem Header="Transfer Deadletter" IsVisible="{Binding ShowTransferDeadletterTab}">
+        <views:MessagesView DataContext="{Binding TransferDeadLetters}" Margin="0,6,0,0" />
+      </TabItem>
+      <TabItem Header="Sessions" IsVisible="{Binding ShowSessionsTab}">
+        <views:SessionsView DataContext="{Binding Sessions}" Margin="0,6,0,0" />
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</UserControl>

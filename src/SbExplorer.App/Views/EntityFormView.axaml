@@ -1,0 +1,169 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             xmlns:views="using:SbExplorer.App.Views"
+             x:Class="SbExplorer.App.Views.EntityFormView"
+             x:DataType="vm:EntityEditorViewModel">
+  <!-- The original "Description" tab: settings in captioned group boxes, two columns wide. -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Margin" Value="0,5,0,1" />
+    </Style>
+    <Style Selector="Border.checklist CheckBox">
+      <Setter Property="Margin" Value="4,0" />
+      <Setter Property="MinHeight" Value="20" />
+      <Setter Property="Padding" Value="4,0" />
+    </Style>
+  </UserControl.Styles>
+  <StackPanel>
+    <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding HasEntitySettings}">
+      <!-- Left column -->
+      <StackPanel Grid.Column="0">
+        <HeaderedContentControl Classes="group" Header="Path">
+          <StackPanel>
+            <TextBlock Text="Relative URI:" IsVisible="{Binding !IsSubscription}" />
+            <TextBlock Text="{Binding Topic, StringFormat='Subscription name (topic {0}):'}" IsVisible="{Binding IsSubscription}" />
+            <TextBox x:Name="NameBox" Text="{Binding Name}" IsReadOnly="{Binding IsEdit}" />
+          </StackPanel>
+        </HeaderedContentControl>
+
+        <HeaderedContentControl Classes="group" Header="Duplicate Detection History Time Window" IsVisible="{Binding HasSizeSettings}">
+          <views:DurationPartsView DataContext="{Binding DuplicateDetectionWindowParts}"
+                                   IsEnabled="{Binding $parent[UserControl].((vm:EntityEditorViewModel)DataContext).RequiresDuplicateDetection}" />
+        </HeaderedContentControl>
+
+        <HeaderedContentControl Classes="group" Header="{Binding KindTitle, StringFormat='{}{0} Properties'}">
+          <StackPanel>
+            <StackPanel IsVisible="{Binding HasSizeSettings}">
+              <TextBlock Classes="label" Text="Max Size In MB:" />
+              <NumericUpDown Value="{Binding MaxSizeInMegabytes}" Minimum="1" Maximum="81920" Increment="1024"
+                             FormatString="0" ParsingNumberStyle="Integer" />
+              <TextBlock Classes="label" Text="Max Message Size In KB (premium):" />
+              <TextBox Text="{Binding MaxMessageSizeInKilobytes}" PlaceholderText="Default" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding HasLockSettings}">
+              <TextBlock Classes="label" Text="Max Delivery Count:" />
+              <NumericUpDown Value="{Binding MaxDeliveryCount}" Minimum="1" Maximum="2000" FormatString="0" ParsingNumberStyle="Integer" />
+            </StackPanel>
+            <TextBlock Classes="label" Text="User Description:" />
+            <TextBox Text="{Binding UserMetadata}" />
+            <StackPanel IsVisible="{Binding !IsTopic}">
+              <TextBlock Classes="label" Text="Forward To:" />
+              <TextBox Text="{Binding ForwardTo}" />
+              <TextBlock Classes="label" Text="Forward Dead-lettered Messages To:" />
+              <TextBox Text="{Binding ForwardDeadLetteredMessagesTo}" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding IsNew}">
+              <TextBlock Classes="label" Text="Status:" />
+              <ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding SelectedStatus}" HorizontalAlignment="Stretch" />
+            </StackPanel>
+          </StackPanel>
+        </HeaderedContentControl>
+      </StackPanel>
+
+      <!-- Right column -->
+      <StackPanel Grid.Column="2">
+        <HeaderedContentControl Classes="group" Header="Auto Delete On Idle">
+          <views:DurationPartsView DataContext="{Binding AutoDeleteOnIdleParts}" />
+        </HeaderedContentControl>
+        <HeaderedContentControl Classes="group" Header="Default Message Time To Live">
+          <views:DurationPartsView DataContext="{Binding DefaultMessageTimeToLiveParts}" />
+        </HeaderedContentControl>
+        <HeaderedContentControl Classes="group" Header="Lock Duration" IsVisible="{Binding HasLockSettings}">
+          <views:DurationPartsView DataContext="{Binding LockDurationParts}" />
+        </HeaderedContentControl>
+        <HeaderedContentControl Classes="group" Header="{Binding KindTitle, StringFormat='{}{0} Settings'}">
+          <Border Classes="white checklist" Padding="0,3">
+            <StackPanel>
+              <CheckBox Content="Enable Batched Operations" IsChecked="{Binding EnableBatchedOperations}" />
+              <CheckBox Content="Enable Dead Lettering On Message Expiration" IsChecked="{Binding DeadLetteringOnMessageExpiration}"
+                        IsVisible="{Binding HasLockSettings}" />
+              <CheckBox Content="Enable Dead Lettering On Filter Evaluation Exceptions" IsChecked="{Binding DeadLetteringOnFilterEvaluationExceptions}"
+                        IsVisible="{Binding IsSubscription}" />
+              <CheckBox Content="Enable Partitioning" IsChecked="{Binding EnablePartitioning}"
+                        IsVisible="{Binding HasSizeSettings}" IsEnabled="{Binding CanChangeCreationOnlySettings}" />
+              <CheckBox Content="Requires Duplicate Detection" IsChecked="{Binding RequiresDuplicateDetection}"
+                        IsVisible="{Binding HasSizeSettings}" IsEnabled="{Binding CanChangeCreationOnlySettings}" />
+              <CheckBox Content="Requires Session" IsChecked="{Binding RequiresSession}"
+                        IsVisible="{Binding HasLockSettings}" IsEnabled="{Binding CanChangeCreationOnlySettings}" />
+              <CheckBox Content="Support Ordering" IsChecked="{Binding SupportOrdering}" IsVisible="{Binding IsTopic}" />
+            </StackPanel>
+          </Border>
+        </HeaderedContentControl>
+      </StackPanel>
+    </Grid>
+
+    <CheckBox Content="Create with a filter instead of the default rule (all messages)" IsChecked="{Binding UseInitialRule}"
+              Margin="2,6,0,0" IsVisible="{Binding IsSubscription}" IsEnabled="{Binding IsNew}" />
+
+    <!-- Rule (HandleRuleControl): name, filter and action. -->
+    <StackPanel IsVisible="{Binding ShowsRuleEditor}">
+      <HeaderedContentControl Classes="group" Header="Rule">
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Text="Name:" />
+            <TextBox Text="{Binding RuleName}" IsReadOnly="{Binding IsEdit}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Filter Type:" />
+            <ComboBox ItemsSource="{Binding FilterKinds}" SelectedItem="{Binding SelectedFilterKind}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:FilterKindOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+        </Grid>
+      </HeaderedContentControl>
+      <HeaderedContentControl Classes="group" Header="Filter" IsVisible="{Binding IsSqlFilter}">
+        <TextBox Text="{Binding SqlExpression}" AcceptsReturn="True" Height="80" TextWrapping="Wrap"
+                 FontFamily="{StaticResource MonoFont}" PlaceholderText="priority = 'high' AND region IN ('eu', 'us')" />
+      </HeaderedContentControl>
+      <HeaderedContentControl Classes="group" Header="Correlation Filter" IsVisible="{Binding IsCorrelationFilter}">
+        <StackPanel>
+          <Grid ColumnDefinitions="*,12,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Label" />
+            <TextBox Grid.Row="1" Text="{Binding CorrelationSubject}" />
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="CorrelationId" />
+            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding CorrelationId}" />
+            <TextBlock Grid.Row="2" Classes="label" Text="MessageId" />
+            <TextBox Grid.Row="3" Text="{Binding CorrelationMessageId}" />
+            <TextBlock Grid.Row="2" Grid.Column="2" Classes="label" Text="SessionId" />
+            <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding CorrelationSessionId}" />
+            <TextBlock Grid.Row="4" Classes="label" Text="To" />
+            <TextBox Grid.Row="5" Text="{Binding CorrelationTo}" />
+            <TextBlock Grid.Row="4" Grid.Column="2" Classes="label" Text="ReplyTo" />
+            <TextBox Grid.Row="5" Grid.Column="2" Text="{Binding CorrelationReplyTo}" />
+            <TextBlock Grid.Row="6" Classes="label" Text="ContentType" />
+            <TextBox Grid.Row="7" Text="{Binding CorrelationContentType}" />
+          </Grid>
+          <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
+            <TextBlock Text="Properties" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="Add Property" Command="{Binding AddRulePropertyCommand}" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding RuleProperties}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:KeyValueRowViewModel">
+                <Grid ColumnDefinitions="200,*,Auto" ColumnSpacing="6" Margin="0,2">
+                  <TextBox Text="{Binding Key}" PlaceholderText="Name" />
+                  <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
+                  <Button Grid.Column="2" Classes="small" Content="✕" ToolTip.Tip="Remove"
+                          Command="{Binding $parent[views:EntityFormView].((vm:EntityEditorViewModel)DataContext).RemoveRulePropertyCommand}"
+                          CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </HeaderedContentControl>
+      <HeaderedContentControl Classes="group" Header="Action">
+        <TextBox Text="{Binding ActionSqlExpression}" FontFamily="{StaticResource MonoFont}" PlaceholderText="SET escalated = 'true'" />
+      </HeaderedContentControl>
+    </StackPanel>
+
+    <TextBlock Text="{Binding ValidationError}" Classes="error" TextWrapping="Wrap" Margin="2,6,0,0" IsVisible="{Binding !IsValid}" />
+    <TextBlock Text="{Binding SaveError}" Classes="error" TextWrapping="Wrap" Margin="2,4,0,0"
+               IsVisible="{Binding SaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+  </StackPanel>
+</UserControl>

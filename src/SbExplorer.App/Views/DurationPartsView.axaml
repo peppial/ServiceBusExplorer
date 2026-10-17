@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             x:Class="SbExplorer.App.Views.DurationPartsView"
+             x:DataType="vm:DurationPartsViewModel">
+  <UserControl.Styles>
+    <Style Selector="NumericUpDown">
+      <Setter Property="ShowButtonSpinner" Value="False" />
+      <Setter Property="Minimum" Value="0" />
+      <Setter Property="FormatString" Value="0" />
+      <Setter Property="ParsingNumberStyle" Value="Integer" />
+      <Setter Property="Margin" Value="0,1,6,0" />
+    </Style>
+  </UserControl.Styles>
+  <Grid ColumnDefinitions="1.6*,*,*,*,1.1*" RowDefinitions="Auto,Auto">
+    <TextBlock Grid.Column="0" Text="Days:" />
+    <TextBlock Grid.Column="1" Text="Hours:" />
+    <TextBlock Grid.Column="2" Text="Minutes:" />
+    <TextBlock Grid.Column="3" Text="Seconds:" />
+    <TextBlock Grid.Column="4" Text="Millisecs:" />
+    <NumericUpDown Grid.Row="1" Grid.Column="0" Value="{Binding Days}" Maximum="10675199" />
+    <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Hours}" Maximum="23" />
+    <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding Minutes}" Maximum="59" />
+    <NumericUpDown Grid.Row="1" Grid.Column="3" Value="{Binding Seconds}" Maximum="59" />
+    <NumericUpDown Grid.Row="1" Grid.Column="4" Value="{Binding Milliseconds}" Maximum="999" Margin="0,1,0,0" />
+  </Grid>
+</UserControl>

@@ -46,7 +46,7 @@ public static class EntityMapper
                 runtime.TransferMessageCount,
                 runtime.TransferDeadLetterMessageCount);
             AddCounts(properties, counts);
-            properties.Add(new(Runtime, "Size", Size(runtime.SizeInBytes)));
+            properties.Add(new(Runtime, "Size In Bytes", Count(runtime.SizeInBytes)));
             AddTimestamps(properties, runtime.CreatedAt, runtime.UpdatedAt, runtime.AccessedAt);
         }
 
@@ -85,9 +85,9 @@ public static class EntityMapper
 
         if (runtime is not null)
         {
-            properties.Add(new(Runtime, "Subscriptions", Count(runtime.SubscriptionCount)));
-            properties.Add(new(Runtime, "Scheduled", Count(runtime.ScheduledMessageCount)));
-            properties.Add(new(Runtime, "Size", Size(runtime.SizeInBytes)));
+            properties.Add(new(Runtime, "Subscription Count", Count(runtime.SubscriptionCount)));
+            properties.Add(new(Runtime, "Scheduled Message Count", Count(runtime.ScheduledMessageCount)));
+            properties.Add(new(Runtime, "Size In Bytes", Count(runtime.SizeInBytes)));
             AddTimestamps(properties, runtime.CreatedAt, runtime.UpdatedAt, runtime.AccessedAt);
         }
 
@@ -208,22 +208,24 @@ public static class EntityMapper
 
     private static void AddCounts(List<EntityProperty> properties, MessageCounts counts, bool includeScheduled = true)
     {
-        properties.Add(new(Runtime, "Active", Count(counts.Active)));
-        properties.Add(new(Runtime, "Dead-lettered", Count(counts.DeadLetter)));
+        // Names match the original explorer's "Queue Information" list.
+        properties.Add(new(Runtime, "Active Message Count", Count(counts.Active)));
+        properties.Add(new(Runtime, "DeadLetter Message Count", Count(counts.DeadLetter)));
         if (includeScheduled)
         {
-            properties.Add(new(Runtime, "Scheduled", Count(counts.Scheduled)));
+            properties.Add(new(Runtime, "Scheduled Message Count", Count(counts.Scheduled)));
         }
 
-        properties.Add(new(Runtime, "Transfer", Count(counts.Transfer)));
-        properties.Add(new(Runtime, "Transfer dead-lettered", Count(counts.TransferDeadLetter)));
+        properties.Add(new(Runtime, "Transfer Message Count", Count(counts.Transfer)));
+        properties.Add(new(Runtime, "Transfer DL Message Count", Count(counts.TransferDeadLetter)));
+        properties.Add(new(Runtime, "Message Count", Count(counts.Total)));
     }
 
     private static void AddTimestamps(List<EntityProperty> properties, DateTimeOffset created, DateTimeOffset updated, DateTimeOffset accessed)
     {
-        properties.Add(new(Runtime, "Created", Timestamp(created)));
-        properties.Add(new(Runtime, "Updated", Timestamp(updated)));
-        properties.Add(new(Runtime, "Accessed", Timestamp(accessed)));
+        properties.Add(new(Runtime, "Created At", Timestamp(created)));
+        properties.Add(new(Runtime, "Accessed At", Timestamp(accessed)));
+        properties.Add(new(Runtime, "Updated At", Timestamp(updated)));
     }
 
     private static void AddIfSet(List<EntityProperty> properties, string name, string? value)

@@ -44,6 +44,8 @@ public partial class MessagesView : UserControl
         }
     }
 
+    private void OnSelectAll(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => MessageTable.SelectAll();
+
     // Columns aren't in the visual tree, so their visibility can't be bound to the view model.
     private void UpdateColumns() => DeadLetterReasonColumn.IsVisible = _viewModel?.IsDeadLetterView == true;
 }

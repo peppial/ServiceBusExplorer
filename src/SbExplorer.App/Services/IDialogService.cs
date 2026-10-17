@@ -20,8 +20,8 @@ public interface IDialogService
 
     Task CopyTextAsync(string text);
 
-    /// <summary>Create/edit entity dialog; true when saved.</summary>
-    Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor);
+    /// <summary>"Retrieve messages": peek or receive, how many and from where; true on OK.</summary>
+    Task<bool> ShowReceiveOptionsAsync(ReceiveOptionsViewModel options);
 
     /// <summary>Lets the user pick a file and returns its text; null when cancelled.</summary>
     Task<string?> OpenTextFileAsync(string title);

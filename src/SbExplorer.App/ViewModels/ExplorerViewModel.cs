@@ -29,8 +29,7 @@ public partial class ExplorerViewModel(
     private NamespaceNodeViewModel? _treeRoot;
 
     // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
-    private readonly Dictionary<string, MessagesViewModel> _messageTabs = [];
-    private readonly Dictionary<string, SessionsViewModel> _sessionTabs = [];
+    private readonly Dictionary<string, EntityPanelViewModel> _panels = [];
 
     private readonly IEntityService _entities = session.Entities;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -47,7 +46,7 @@ public partial class ExplorerViewModel(
     public string NamespaceUri => $"sb://{session.FullyQualifiedNamespace}/";
 
     /// <summary>The right panel's header, e.g. "View Queue: orders".</summary>
-    public string DetailsTitle => SelectedNode switch
+    public string DetailsTitle => Creating is { } creating ? $"Create {creating.Kind}" : SelectedNode switch
     {
         EntityNodeViewModel { Entity: var e } => $"View {e.Kind}: {e.Name}",
         FolderNodeViewModel folder => folder.Title,
@@ -64,7 +63,7 @@ public partial class ExplorerViewModel(
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages),
-        nameof(Sessions), nameof(HasSessions), nameof(DetailsTitle))]
+        nameof(Sessions), nameof(HasSessions), nameof(DetailsTitle), nameof(Details), nameof(ShowsDetails))]
     private TreeNodeViewModel? _selectedNode;
 
     [ObservableProperty]
@@ -79,65 +78,52 @@ public partial class ExplorerViewModel(
     public EntityInfo? SelectedEntity => SelectedNode?.Entity;
     public bool HasSelection => SelectedEntity is not null;
 
-    public bool HasMessages => Messages is not null;
-
-    /// <summary>The Messages tab for the selected queue or subscription.</summary>
-    public MessagesViewModel? Messages
+    /// <summary>The right panel for the selected entity; one per entity, refreshed with new data in place.</summary>
+    public EntityPanelViewModel? Details
     {
         get
         {
-            if (SelectedEntity is not { Kind: EntityKind.Queue or EntityKind.Subscription } entity)
+            if (SelectedEntity is not { } entity)
             {
                 return null;
             }
 
-            if (!_messageTabs.TryGetValue(entity.Path, out var tab) || tab.Entity != entity && !tab.HasLockedMessages)
+            if (_panels.TryGetValue(entity.Path, out var panel))
             {
-                // Rebuild on fresh entity data, unless the old tab still holds locks the user must settle.
-                tab = new MessagesViewModel(session.Messages, dialogs, entity, log: log);
-                _messageTabs[entity.Path] = tab;
+                _ = panel.UpdateAsync(entity);
+            }
+            else
+            {
+                panel = new EntityPanelViewModel(this, session, dialogs, log, entity);
+                _panels[entity.Path] = panel;
             }
 
-            return tab;
+            return panel;
         }
     }
 
-    public bool HasSessions => Sessions is not null;
+    /// <summary>A new entity being filled in; the right panel shows it instead of the selection ("Create Queue").</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCreating), nameof(ShowsDetails), nameof(DetailsTitle))]
+    [NotifyCanExecuteChangedFor(nameof(CommitCreateCommand))]
+    private EntityEditorViewModel? _creating;
 
-    /// <summary>The Sessions tab, for session-enabled queues and subscriptions.</summary>
-    public SessionsViewModel? Sessions
-    {
-        get
-        {
-            if (SelectedEntity is not { Kind: EntityKind.Queue or EntityKind.Subscription, RequiresSession: true } entity)
-            {
-                return null;
-            }
+    public bool IsCreating => Creating is not null;
+    public bool ShowsDetails => !IsCreating && HasSelection;
 
-            if (!_sessionTabs.TryGetValue(entity.Path, out var tab))
-            {
-                tab = new SessionsViewModel(session.Messages, dialogs, entity, log);
-                _sessionTabs[entity.Path] = tab;
-            }
-
-            return tab;
-        }
-    }
+    public bool HasMessages => Details?.SupportsMessages == true;
+    public MessagesViewModel? Messages => Details?.Messages;
+    public bool HasSessions => Details?.SupportsSessions == true;
+    public SessionsViewModel? Sessions => Details?.Sessions;
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var tab in _messageTabs.Values)
+        foreach (var panel in _panels.Values)
         {
-            await tab.DisposeAsync();
+            await panel.DisposeAsync();
         }
 
-        foreach (var tab in _sessionTabs.Values)
-        {
-            await tab.DisposeAsync();
-        }
-
-        _messageTabs.Clear();
-        _sessionTabs.Clear();
+        _panels.Clear();
     }
 
     public IReadOnlyList<PropertyGroupViewModel> PropertyGroups =>
@@ -240,9 +226,15 @@ public partial class ExplorerViewModel(
 
     partial void OnSelectedNodeChanged(TreeNodeViewModel? value)
     {
+        // Picking another node abandons a half-filled create form, as in the original.
+        if (value is not null)
+        {
+            Creating = null;
+        }
+
         foreach (var command in new IRelayCommand[]
                  {
-                     RemoveEntityCommand, NewSubscriptionCommand, NewRuleCommand, EditCommand, DeleteCommand, SetStatusCommand,
+                     RemoveEntityCommand, NewSubscriptionCommand, NewRuleCommand, DeleteCommand, SetStatusCommand,
                  })
         {
             command.NotifyCanExecuteChanged();
@@ -252,33 +244,39 @@ public partial class ExplorerViewModel(
     public bool CanManage => session.CanManage;
 
     [RelayCommand(CanExecute = nameof(CanManage))]
-    private Task NewQueueAsync() => EditAsync(EntityEditorViewModel.NewQueue(_entities));
+    private void NewQueue() => Creating = EntityEditorViewModel.NewQueue(_entities);
 
     [RelayCommand(CanExecute = nameof(CanManage))]
-    private Task NewTopicAsync() => EditAsync(EntityEditorViewModel.NewTopic(_entities));
+    private void NewTopic() => Creating = EntityEditorViewModel.NewTopic(_entities);
 
     [RelayCommand(CanExecute = nameof(HasTopicContext))]
-    private Task NewSubscriptionAsync() => EditAsync(EntityEditorViewModel.NewSubscription(_entities, SelectedTopic!));
+    private void NewSubscription() => Creating = EntityEditorViewModel.NewSubscription(_entities, SelectedTopic!);
 
     [RelayCommand(CanExecute = nameof(HasSubscriptionContext))]
-    private Task NewRuleAsync()
+    private void NewRule()
     {
         var (topic, subscription) = SelectedSubscription!.Value;
-        return EditAsync(EntityEditorViewModel.NewRule(_entities, topic, subscription));
+        Creating = EntityEditorViewModel.NewRule(_entities, topic, subscription);
     }
 
-    [RelayCommand(CanExecute = nameof(HasManageableSelection))]
-    private async Task EditAsync()
+    /// <summary>The Create button of the create form.</summary>
+    [RelayCommand(CanExecute = nameof(IsCreating))]
+    private async Task CommitCreateAsync()
     {
-        try
+        var editor = Creating!;
+        await editor.SaveCommand.ExecuteAsync(null);
+        if (editor.SaveError is not null)
         {
-            await EditAsync(await EntityEditorViewModel.EditAsync(_entities, SelectedEntity!));
+            log?.Error($"Could not create the {editor.Kind.ToString().ToLowerInvariant()}: {editor.SaveError}");
+            return;
         }
-        catch (Exception ex)
-        {
-            ReportError($"Could not open {SelectedEntity?.Name}: {ErrorMessages.Describe(ex)}");
-        }
+
+        Creating = null;
+        await CompleteSaveAsync(editor);
     }
+
+    [RelayCommand]
+    private void CancelCreate() => Creating = null;
 
     [RelayCommand(CanExecute = nameof(HasManageableSelection))]
     private async Task DeleteAsync()
@@ -313,8 +311,11 @@ public partial class ExplorerViewModel(
         try
         {
             await _entities.DeleteAsync(entity);
-            _messageTabs.Remove(entity.Path);
-            _sessionTabs.Remove(entity.Path);
+            if (_panels.Remove(entity.Path, out var panel))
+            {
+                await panel.DisposeAsync();
+            }
+
             SelectedNode = null;
             await RefreshCommand.ExecuteAsync(null);
             Report($"The {kind} {entity.Path} has been successfully deleted.");
@@ -402,8 +403,16 @@ public partial class ExplorerViewModel(
             return;
         }
 
-        var progress = new Progress<ImportItemResult>(r => LoadStatus = $"Importing… {r.Path}: {r.Outcome}");
+        var finished = false;
+        var progress = new Progress<ImportItemResult>(r =>
+        {
+            if (!finished)
+            {
+                LoadStatus = $"Importing… {r.Path}: {r.Outcome}";
+            }
+        });
         var results = await _transfer.ImportAsync(definition, overwrite: choice == 1, progress);
+        finished = true;
         await RefreshCommand.ExecuteAsync(null);
 
         var summary = string.Join(", ", results.GroupBy(r => r.Outcome).Select(g => $"{g.Count()} {g.Key.ToString().ToLowerInvariant()}"));
@@ -421,13 +430,16 @@ public partial class ExplorerViewModel(
         }
     }
 
-    private async Task EditAsync(EntityEditorViewModel editor)
+    /// <summary>After a create or update: reload the tree, select the entity and log the result.</summary>
+    internal async Task CompleteSaveAsync(EntityEditorViewModel editor)
     {
-        if (await dialogs.ShowEntityEditorAsync(editor) && editor.SavedPath is { } path)
+        if (editor.SavedPath is not { } path)
         {
-            await ReloadAndSelectAsync(path);
-            Report($"The {editor.Kind.ToString().ToLowerInvariant()} {path} has been successfully {(editor.IsNew ? "created" : "updated")}.");
+            return;
         }
+
+        await ReloadAndSelectAsync(path);
+        Report($"The {editor.Kind.ToString().ToLowerInvariant()} {path} has been successfully {(editor.IsNew ? "created" : "updated")}.");
     }
 
     /// <summary>Refreshes the tree, expanding the parents of <paramref name="path"/> and selecting it.</summary>

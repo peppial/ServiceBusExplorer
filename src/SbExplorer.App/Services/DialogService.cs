@@ -59,9 +59,9 @@ public sealed class DialogService : IDialogService
         }
     }
 
-    public async Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor)
+    public async Task<bool> ShowReceiveOptionsAsync(ReceiveOptionsViewModel options)
     {
-        var window = new EntityEditorWindow { DataContext = editor };
+        var window = new ReceiveOptionsWindow { DataContext = options };
         return await window.ShowDialog<bool?>(Owner) == true;
     }
 

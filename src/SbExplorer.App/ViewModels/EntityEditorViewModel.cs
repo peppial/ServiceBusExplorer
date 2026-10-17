@@ -34,7 +34,24 @@ public partial class EntityEditorViewModel : ObservableObject
         RuleProperties.CollectionChanged += OnRulePropertiesChanged;
         _selectedFilterKind = FilterKinds[0];
         _selectedStatus = EntityStatusValue.Active;
+        LockDurationParts = new DurationPartsViewModel(_lockDuration, text => LockDuration = text);
+        DefaultMessageTimeToLiveParts = new DurationPartsViewModel(_defaultMessageTimeToLive, text => DefaultMessageTimeToLive = text);
+        AutoDeleteOnIdleParts = new DurationPartsViewModel(_autoDeleteOnIdle, text => AutoDeleteOnIdle = text);
+        DuplicateDetectionWindowParts = new DurationPartsViewModel(_duplicateDetectionWindow, text => DuplicateDetectionWindow = text);
     }
+
+    public DurationPartsViewModel LockDurationParts { get; }
+    public DurationPartsViewModel DefaultMessageTimeToLiveParts { get; }
+    public DurationPartsViewModel AutoDeleteOnIdleParts { get; }
+    public DurationPartsViewModel DuplicateDetectionWindowParts { get; }
+
+    /// <summary>The original labels: "Queue Properties", "Subscription Settings", …</summary>
+    public string KindTitle => Kind.ToString();
+
+    partial void OnLockDurationChanged(string value) => LockDurationParts?.Load(value);
+    partial void OnDefaultMessageTimeToLiveChanged(string value) => DefaultMessageTimeToLiveParts?.Load(value);
+    partial void OnAutoDeleteOnIdleChanged(string value) => AutoDeleteOnIdleParts?.Load(value);
+    partial void OnDuplicateDetectionWindowChanged(string value) => DuplicateDetectionWindowParts?.Load(value);
 
     public EntityKind Kind { get; }
     public bool IsNew { get; }

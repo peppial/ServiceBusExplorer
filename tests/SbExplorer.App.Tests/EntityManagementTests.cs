@@ -32,16 +32,13 @@ public class EntityManagementTests
         _vm.SelectedNode = Node("events");
         Assert.True(_vm.NewSubscriptionCommand.CanExecute(null));
         Assert.False(_vm.NewRuleCommand.CanExecute(null));
-        _dialogs.OnEntityEditor = async editor =>
-        {
-            Assert.Equal("New subscription on events", editor.Title);
-            editor.Name = "eu";
-            await editor.SaveCommand.ExecuteAsync(null);
-            return true;
-        };
+        _vm.NewSubscriptionCommand.Execute(null);
+        Assert.Equal("Create Subscription", _vm.DetailsTitle);
+        Assert.False(_vm.ShowsDetails);
+        _vm.Creating!.Name = "eu";
+        await _vm.CommitCreateCommand.ExecuteAsync(null);
 
-        await _vm.NewSubscriptionCommand.ExecuteAsync(null);
-
+        Assert.Null(_vm.Creating);
         Assert.Equal("events/Subscriptions/eu", _vm.SelectedEntity?.Path);
         Assert.True(Node("events").IsExpanded);
         Assert.Equal("The subscription events/Subscriptions/eu has been successfully created.", _vm.LoadStatus);

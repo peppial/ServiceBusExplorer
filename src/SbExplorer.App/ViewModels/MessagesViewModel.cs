@@ -20,14 +20,37 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 
     private readonly ILogService? _log;
 
-    public MessagesViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, string? sessionId = null, ILogService? log = null)
+    public MessagesViewModel(
+        IMessageService service,
+        IDialogService dialogs,
+        EntityInfo entity,
+        string? sessionId = null,
+        ILogService? log = null,
+        SubQueueKind? fixedSubQueue = null)
     {
         _service = service;
         _dialogs = dialogs;
         _log = log;
         Entity = entity;
         SessionId = sessionId;
-        _selectedSubQueue = SubQueues[0];
+        _selectedSubQueue = SubQueues.First(o => o.Kind == (fixedSubQueue ?? SubQueueKind.None));
+        HasFixedSubQueue = fixedSubQueue is not null;
+    }
+
+    /// <summary>True for the Deadletter and Transfer Deadletter tabs, which each show one sub-queue.</summary>
+    public bool HasFixedSubQueue { get; }
+
+    /// <summary>Runs the choice made in the Retrieve messages dialog.</summary>
+    public Task RetrieveAsync(RetrieveMode mode, int count, long? fromSequence)
+    {
+        MaxMessages = count;
+        FromSequence = fromSequence?.ToString() ?? string.Empty;
+        return mode switch
+        {
+            RetrieveMode.ReceiveAndDelete => ReceiveAndDeleteCommand.CanExecute(null) ? ReceiveAndDeleteCommand.ExecuteAsync(null) : Task.CompletedTask,
+            RetrieveMode.ReceiveLocked => ReceiveLockedCommand.CanExecute(null) ? ReceiveLockedCommand.ExecuteAsync(null) : Task.CompletedTask,
+            _ => PeekCommand.CanExecute(null) ? PeekCommand.ExecuteAsync(null) : Task.CompletedTask,
+        };
     }
 
     public EntityInfo Entity { get; }
@@ -36,7 +59,7 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     public string? SessionId { get; }
 
     public bool IsSessionView => SessionId is not null;
-    public bool ShowSubQueues => !IsSessionView;
+    public bool ShowSubQueues => !IsSessionView && !HasFixedSubQueue;
     public ObservableCollection<MessageRowViewModel> Messages { get; } = [];
 
     public IReadOnlyList<SubQueueOption> SubQueues { get; } =
@@ -331,12 +354,21 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var progress = new Progress<long>(count => SetStatus($"Purging {target}… {count:N0} deleted so far"));
+        // Progress reports are posted asynchronously; one arriving after the result must not overwrite it.
+        var finished = false;
+        var progress = new Progress<long>(count =>
+        {
+            if (!finished)
+            {
+                SetStatus($"Purging {target}… {count:N0} deleted so far");
+            }
+        });
         await RunAsync(async () =>
         {
             var purged = PurgesAllSessions
                 ? await _service.PurgeAllSessionsAsync(Source, progress, cancellationToken)
                 : await _service.PurgeAsync(Source, progress, cancellationToken);
+            finished = true;
             Messages.Clear();
             SelectedRows = [];
             return $"Purged {Plural((int)Math.Min(purged, int.MaxValue))} from {target}.";
@@ -502,7 +534,7 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         // Progress text stays in the tab; results go to the Log, prefixed with where they happened.
         if (!string.IsNullOrEmpty(message) && !message.EndsWith('…') && !message.Contains("so far", StringComparison.Ordinal))
         {
-            var line = $"{SourceLabel}: {message}";
+            var line = $"{char.ToUpperInvariant(SourceLabel[0])}{SourceLabel[1..]}: {message}";
             if (isError)
             {
                 _log?.Error(line);

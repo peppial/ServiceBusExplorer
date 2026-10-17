@@ -146,11 +146,12 @@ internal sealed class FakeDialogs : IDialogService
         return Task.CompletedTask;
     }
 
-    public Func<EntityEditorViewModel, Task<bool>> OnEntityEditor { get; set; } = _ => Task.FromResult(false);
+    /// <summary>Fills in the Retrieve messages dialog and returns whether to proceed.</summary>
+    public Func<ReceiveOptionsViewModel, bool> OnReceiveOptions { get; set; } = _ => true;
     public string? OpenFileText { get; set; }
     public int? ChooseResult { get; set; }
 
-    public Task<bool> ShowEntityEditorAsync(EntityEditorViewModel editor) => OnEntityEditor(editor);
+    public Task<bool> ShowReceiveOptionsAsync(ReceiveOptionsViewModel options) => Task.FromResult(OnReceiveOptions(options));
 
     public Task<string?> OpenTextFileAsync(string title) => Task.FromResult(OpenFileText);
 
