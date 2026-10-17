@@ -14,8 +14,35 @@ public interface IMessageService
     Task<IReceivedBatch> ReceivePeekLockAsync(
         MessageSource source, int maxMessages, TimeSpan maxWaitTime, CancellationToken cancellationToken = default);
 
-    /// <summary>Sends to a queue or topic, batching as needed.</summary>
+    /// <summary>Sends to a queue or topic, batching as needed. Messages with a ScheduledEnqueueTime are scheduled.</summary>
     Task SendAsync(string entityName, IReadOnlyList<OutgoingMessage> messages, CancellationToken cancellationToken = default);
+
+    /// <summary>Locks deferred messages by sequence number; settle them through the returned batch.</summary>
+    Task<IReceivedBatch> ReceiveDeferredAsync(
+        MessageSource source, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default);
+
+    /// <summary>Cancels scheduled messages on a queue or topic.</summary>
+    Task CancelScheduledAsync(string entityName, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes every message in the source; reports the running total.</summary>
+    Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes specific messages. Service Bus can't receive an arbitrary message by sequence number, so this
+    /// locks messages until it finds the requested ones and abandons the rest.
+    /// </summary>
+    Task<IReadOnlyList<long>> DeleteAsync(
+        MessageSource source, IReadOnlyCollection<long> sequenceNumbers, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends copies of the given messages to <paramref name="targetEntity"/> and removes the originals,
+    /// usually to replay dead-lettered messages. A copy is only removed after it was sent.
+    /// </summary>
+    Task<IReadOnlyList<long>> ResubmitAsync(
+        MessageSource source,
+        IReadOnlyCollection<long> sequenceNumbers,
+        string targetEntity,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

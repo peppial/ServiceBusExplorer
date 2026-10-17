@@ -141,4 +141,23 @@ public class SendMessageViewModelTests
         Assert.Equal(2, vm.SentCount);
         Assert.All(_service.Sent, s => Assert.Equal("hi", Encoding.UTF8.GetString(s.Message.Body.Span)));
     }
+
+    [Fact]
+    public void Scheduling_validates_and_sets_the_enqueue_time()
+    {
+        var clock = new FixedClock(new DateTimeOffset(2026, 10, 17, 12, 0, 0, TimeSpan.Zero));
+        var vm = new SendMessageViewModel(_service, "orders", false, clock: clock) { Schedule = true, ScheduleAt = "soon" };
+        Assert.False(vm.IsValid);
+
+        vm.ScheduleAt = "+1h";
+
+        Assert.True(vm.IsValid);
+        Assert.Equal(clock.GetUtcNow().AddHours(1), vm.BuildMessages().Single().ScheduledEnqueueTime);
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
 }

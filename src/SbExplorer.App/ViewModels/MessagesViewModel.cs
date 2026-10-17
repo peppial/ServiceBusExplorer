@@ -7,7 +7,9 @@ using SbExplorer.Core.Messaging;
 
 namespace SbExplorer.App.ViewModels;
 
-/// <summary>The Messages tab for one queue or subscription.</summary>
+public sealed record SubQueueOption(SubQueueKind Kind, string Label);
+
+/// <summary>The Messages tab for one queue or subscription, including its dead-letter sub-queues.</summary>
 public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly TimeSpan ReceiveWait = TimeSpan.FromSeconds(5);
@@ -21,28 +23,48 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         _service = service;
         _dialogs = dialogs;
         Entity = entity;
-        Source = entity.Kind == EntityKind.Subscription
-            ? MessageSource.ForSubscription(entity.Path.Split('/')[0], entity.Name)
-            : MessageSource.ForQueue(entity.Name);
+        _selectedSubQueue = SubQueues[0];
     }
 
     public EntityInfo Entity { get; }
-    public MessageSource Source { get; }
     public ObservableCollection<MessageRowViewModel> Messages { get; } = [];
 
-    /// <summary>Service Bus refuses to browse or receive from an entity that auto-forwards.</summary>
-    public bool CanBrowse => Entity.ForwardTo is null;
+    public IReadOnlyList<SubQueueOption> SubQueues { get; } =
+    [
+        new(SubQueueKind.None, "Active"),
+        new(SubQueueKind.DeadLetter, "Dead-letter"),
+        new(SubQueueKind.TransferDeadLetter, "Transfer dead-letter"),
+    ];
 
-    /// <summary>Receiving from a session entity needs a session receiver, which the Sessions tab provides.</summary>
-    public bool CanReceive => CanBrowse && !Entity.RequiresSession;
+    public MessageSource Source => Entity.Kind == EntityKind.Subscription
+        ? MessageSource.ForSubscription(Entity.Path.Split('/')[0], Entity.Name, SelectedSubQueue.Kind)
+        : MessageSource.ForQueue(Entity.Name, SelectedSubQueue.Kind);
+
+    public bool IsDeadLetterView => SelectedSubQueue.Kind != SubQueueKind.None;
+    public bool IsActiveView => !IsDeadLetterView;
+
+    /// <summary>
+    /// Service Bus refuses to browse an entity that auto-forwards. Its dead-letter queue doesn't forward
+    /// (unless ForwardDeadLetteredMessagesTo is set), so that stays browsable.
+    /// </summary>
+    public bool CanBrowse => IsDeadLetterView || Entity.ForwardTo is null;
+
+    /// <summary>The active queue of a session entity needs a session receiver; its dead-letter queue doesn't.</summary>
+    public bool CanReceive => CanBrowse && (IsDeadLetterView || !Entity.RequiresSession);
 
     public string? Notice => !CanBrowse
-        ? $"This {KindName} forwards every message to '{Entity.ForwardTo}', so Service Bus doesn't allow browsing or receiving here. Open '{Entity.ForwardTo}' instead."
-        : Entity.RequiresSession
-            ? $"This {KindName} requires sessions. Peek shows messages from all sessions; receiving happens per session."
-            : null;
+        ? $"This {KindName} forwards every message to '{Entity.ForwardTo}', so Service Bus doesn't allow browsing or receiving here. Open '{Entity.ForwardTo}' instead, or check this {KindName}'s dead-letter queue."
+        : IsActiveView && Entity.RequiresSession
+            ? $"This {KindName} requires sessions. Peek shows messages from all sessions; receiving and purging happen per session."
+            : IsDeadLetterView && Source.IsSubscription
+                ? $"Resubmitted messages go to the topic '{Source.SendTarget}', so every subscription whose filter matches receives a copy."
+                : null;
 
     public string SendLabel => Source.IsSubscription ? $"Send to topic '{Source.SendTarget}'…" : "Send…";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Source), nameof(IsDeadLetterView), nameof(IsActiveView), nameof(CanBrowse), nameof(CanReceive), nameof(Notice))]
+    private SubQueueOption _selectedSubQueue;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PeekCommand), nameof(PeekNextCommand), nameof(ReceiveAndDeleteCommand), nameof(ReceiveLockedCommand))]
@@ -53,8 +75,15 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Detail))]
-    [NotifyCanExecuteChangedFor(nameof(CompleteCommand), nameof(AbandonCommand), nameof(DeadLetterCommand), nameof(DeferCommand), nameof(ResendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CompleteCommand), nameof(AbandonCommand), nameof(DeadLetterCommand), nameof(DeferCommand),
+        nameof(ResendCommand), nameof(EditAndResubmitCommand))]
     private MessageRowViewModel? _selectedMessage;
+
+    /// <summary>All rows selected in the table; bulk actions work on these.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionSummary))]
+    [NotifyCanExecuteChangedFor(nameof(ResubmitCommand), nameof(DeleteCommand), nameof(ReceiveDeferredCommand), nameof(CancelScheduledCommand))]
+    private IReadOnlyList<MessageRowViewModel> _selectedRows = [];
 
     [ObservableProperty]
     private string? _status;
@@ -64,7 +93,8 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasLockedMessages))]
-    [NotifyCanExecuteChangedFor(nameof(ReleaseCommand), nameof(PeekCommand), nameof(PeekNextCommand), nameof(ReceiveAndDeleteCommand), nameof(ReceiveLockedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReleaseCommand), nameof(PeekCommand), nameof(PeekNextCommand), nameof(ReceiveAndDeleteCommand),
+        nameof(ReceiveLockedCommand), nameof(ReceiveDeferredCommand), nameof(ResubmitCommand), nameof(DeleteCommand), nameof(PurgeCommand))]
     private int _lockedCount;
 
     [ObservableProperty]
@@ -72,8 +102,23 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
 
     public bool HasLockedMessages => LockedCount > 0;
     public bool HasMoreToPeek { get; private set; }
+    public string? SelectionSummary => SelectedRows.Count > 1 ? $"{SelectedRows.Count} selected" : null;
 
     public MessageDetailViewModel? Detail => SelectedMessage is null ? null : new MessageDetailViewModel(SelectedMessage.Message, _dialogs);
+
+    async partial void OnSelectedSubQueueChanged(SubQueueOption value)
+    {
+        await ReleaseLocksAsync();
+        Messages.Clear();
+        SelectedRows = [];
+        HasMoreToPeek = false;
+        SetStatus(string.Empty);
+        NotifyAllCommands();
+        if (CanBrowse)
+        {
+            await PeekCommand.ExecuteAsync(null);
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanStartRead))]
     private async Task PeekAsync(CancellationToken cancellationToken)
@@ -108,7 +153,7 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     {
         var confirmed = await _dialogs.ConfirmAsync(
             "Receive and delete",
-            $"Permanently remove up to {Plural(MaxMessages)} from {Source.EntityPath}? They can't be put back.",
+            $"Permanently remove up to {Plural(MaxMessages)} from {SourceLabel}? They can't be put back.",
             "Receive and delete");
         if (!confirmed)
         {
@@ -129,17 +174,18 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         await RunAsync(async () =>
         {
             var batch = await _service.ReceivePeekLockAsync(Source, MaxMessages, ReceiveWait, cancellationToken);
-            if (batch.Messages.Count == 0)
-            {
-                await batch.DisposeAsync();
-                ShowMessages([], append: false);
-                return "No messages to receive.";
-            }
+            return await HoldLocksAsync(batch, "receive");
+        });
+    }
 
-            _lockedBatch = batch;
-            ShowMessages(batch.Messages, append: false);
-            UpdateLockState();
-            return $"Locked {Plural(batch.Messages.Count)}. Complete, abandon, dead-letter or defer each one, or release them all.";
+    [RelayCommand(CanExecute = nameof(CanReceiveDeferred))]
+    private async Task ReceiveDeferredAsync(CancellationToken cancellationToken)
+    {
+        var sequenceNumbers = SelectedRows.Select(r => r.SequenceNumber).ToList();
+        await RunAsync(async () =>
+        {
+            var batch = await _service.ReceiveDeferredAsync(Source, sequenceNumbers, cancellationToken);
+            return await HoldLocksAsync(batch, "receive as deferred");
         });
     }
 
@@ -169,12 +215,107 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     {
         var count = LockedCount;
         await ReleaseLocksAsync();
-        foreach (var row in Messages.Where(r => r.Message.LockToken is not null).ToList())
+        RemoveRows(Messages.Where(r => r.Message.LockToken is not null).ToList());
+        SetStatus($"Released {Plural(count)} back to {SourceLabel}.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCancelScheduled))]
+    private async Task CancelScheduledAsync(CancellationToken cancellationToken)
+    {
+        var rows = SelectedRows.ToList();
+        if (!await _dialogs.ConfirmAsync("Cancel scheduled messages", $"Cancel {Plural(rows.Count)}? They will never be delivered.", "Cancel messages"))
         {
-            Messages.Remove(row);
+            return;
         }
 
-        SetStatus($"Released {Plural(count)} back to {Source.EntityPath}.");
+        await RunAsync(async () =>
+        {
+            await _service.CancelScheduledAsync(Source.SendTarget, rows.Select(r => r.SequenceNumber).ToList(), cancellationToken);
+            RemoveRows(rows);
+            return $"Cancelled {Plural(rows.Count)}.";
+        });
+    }
+
+    [RelayCommand(CanExecute = nameof(CanResubmit))]
+    private async Task ResubmitAsync(CancellationToken cancellationToken)
+    {
+        var rows = SelectedRows.ToList();
+        var target = await _dialogs.PromptAsync(
+            $"Resubmit {Plural(rows.Count)}",
+            "Send copies to this queue or topic, then remove them from the dead-letter queue:",
+            Source.SendTarget);
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var done = await _service.ResubmitAsync(Source, rows.Select(r => r.SequenceNumber).ToList(), target.Trim(), cancellationToken);
+            RemoveRows(rows.Where(r => done.Contains(r.SequenceNumber)).ToList());
+            return $"Resubmitted {Plural(done.Count)} to {target.Trim()}.{Missing(rows.Count, done.Count)}";
+        });
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEditAndResubmit))]
+    private async Task EditAndResubmitAsync(CancellationToken cancellationToken)
+    {
+        var row = SelectedMessage!;
+        var sender = new SendMessageViewModel(_service, Source.SendTarget, requiresSession: false, row.Message)
+        {
+            Heading = $"Edit and resubmit message {row.SequenceNumber}",
+        };
+        if (!await _dialogs.ShowSendMessageAsync(sender))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var deleted = await _service.DeleteAsync(Source, [row.SequenceNumber], cancellationToken);
+            if (deleted.Count == 0)
+            {
+                return $"Sent the edited message to {Source.SendTarget}, but the original {row.SequenceNumber} was no longer in the dead-letter queue.";
+            }
+
+            RemoveRows([row]);
+            return $"Sent the edited message to {Source.SendTarget} and removed the original {row.SequenceNumber}.";
+        });
+    }
+
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private async Task DeleteAsync(CancellationToken cancellationToken)
+    {
+        var rows = SelectedRows.ToList();
+        if (!await _dialogs.ConfirmAsync("Delete messages", $"Permanently delete {Plural(rows.Count)} from {SourceLabel}?", "Delete"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var done = await _service.DeleteAsync(Source, rows.Select(r => r.SequenceNumber).ToList(), cancellationToken);
+            RemoveRows(rows.Where(r => done.Contains(r.SequenceNumber)).ToList());
+            return $"Deleted {Plural(done.Count)}.{Missing(rows.Count, done.Count)}";
+        });
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPurge), IncludeCancelCommand = true)]
+    private async Task PurgeAsync(CancellationToken cancellationToken)
+    {
+        if (!await _dialogs.ConfirmAsync("Purge", $"Permanently delete every message in {SourceLabel}? This can't be undone.", "Purge"))
+        {
+            return;
+        }
+
+        var progress = new Progress<long>(count => SetStatus($"Purging {SourceLabel}… {count:N0} deleted so far"));
+        await RunAsync(async () =>
+        {
+            var purged = await _service.PurgeAsync(Source, progress, cancellationToken);
+            Messages.Clear();
+            SelectedRows = [];
+            return $"Purged {Plural((int)Math.Min(purged, int.MaxValue))} from {SourceLabel}.";
+        });
     }
 
     [RelayCommand]
@@ -191,8 +332,25 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         var sender = new SendMessageViewModel(_service, Source.SendTarget, Entity.Kind == EntityKind.Queue && Entity.RequiresSession, template);
         if (await _dialogs.ShowSendMessageAsync(sender))
         {
-            SetStatus($"Sent {Plural(sender.SentCount)} to {Source.SendTarget}.");
+            SetStatus(sender.Schedule
+                ? $"Scheduled {Plural(sender.SentCount)} on {Source.SendTarget}."
+                : $"Sent {Plural(sender.SentCount)} to {Source.SendTarget}.");
         }
+    }
+
+    private async Task<string> HoldLocksAsync(IReceivedBatch batch, string verb)
+    {
+        if (batch.Messages.Count == 0)
+        {
+            await batch.DisposeAsync();
+            ShowMessages([], append: false);
+            return $"No messages to {verb}.";
+        }
+
+        _lockedBatch = batch;
+        ShowMessages(batch.Messages, append: false);
+        UpdateLockState();
+        return $"Locked {Plural(batch.Messages.Count)}. Complete, abandon, dead-letter or defer each one, or release them all.";
     }
 
     private async Task SettleAsync(string verb, Func<IReceivedBatch, MessageInfo, Task> settle)
@@ -201,9 +359,7 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await settle(_lockedBatch!, row.Message);
-            var index = Messages.IndexOf(row);
-            Messages.Remove(row);
-            SelectedMessage = Messages.Count == 0 ? null : Messages[Math.Min(index, Messages.Count - 1)];
+            RemoveRows([row]);
             UpdateLockState();
             SetStatus($"{verb} message {row.SequenceNumber}.");
             if (LockedCount == 0)
@@ -239,6 +395,7 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         if (!append)
         {
             Messages.Clear();
+            SelectedRows = [];
         }
 
         foreach (var message in messages)
@@ -249,7 +406,26 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         if (!append)
         {
             SelectedMessage = Messages.FirstOrDefault();
+            SelectedRows = SelectedMessage is null ? [] : [SelectedMessage];
         }
+    }
+
+    /// <summary>Removes rows and moves the selection to the next remaining row.</summary>
+    private void RemoveRows(IReadOnlyCollection<MessageRowViewModel> rows)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        var index = SelectedMessage is null ? 0 : Math.Max(0, Messages.IndexOf(SelectedMessage));
+        foreach (var row in rows)
+        {
+            Messages.Remove(row);
+        }
+
+        SelectedMessage = Messages.Count == 0 ? null : Messages[Math.Min(index, Messages.Count - 1)];
+        SelectedRows = SelectedMessage is null ? [] : [SelectedMessage];
     }
 
     private async Task ReleaseLocksAsync()
@@ -276,9 +452,21 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
         DeferCommand.NotifyCanExecuteChanged();
     }
 
+    private void NotifyAllCommands()
+    {
+        foreach (var command in new IRelayCommand[]
+                 {
+                     PeekCommand, PeekNextCommand, ReceiveAndDeleteCommand, ReceiveLockedCommand, ReceiveDeferredCommand,
+                     CancelScheduledCommand, ResubmitCommand, EditAndResubmitCommand, DeleteCommand, PurgeCommand,
+                 })
+        {
+            command.NotifyCanExecuteChanged();
+        }
+    }
+
     private void SetStatus(string message, bool isError = false)
     {
-        Status = message;
+        Status = string.IsNullOrEmpty(message) ? null : message;
         HasError = isError;
     }
 
@@ -288,10 +476,32 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private bool CanPeekNext() => CanStartRead() && HasMoreToPeek && Messages.Count > 0;
     private bool HasSelectedMessage() => SelectedMessage is not null;
     private bool IsSelectedLocked() => _lockedBatch is not null && SelectedMessage?.Message.LockToken is not null;
+    private bool HasUnlockedSelection() => SelectedRows.Count > 0 && !HasLockedMessages;
+
+    private bool CanReceiveDeferred() =>
+        CanReceive && HasUnlockedSelection() && SelectedRows.All(r => r.Message.State == MessageState.Deferred);
+
+    private bool CanCancelScheduled() =>
+        IsActiveView && HasUnlockedSelection() && SelectedRows.All(r => r.Message.State == MessageState.Scheduled);
+
+    private bool CanResubmit() => IsDeadLetterView && HasUnlockedSelection();
+    private bool CanEditAndResubmit() => IsDeadLetterView && !HasLockedMessages && SelectedMessage is not null;
+    private bool CanDelete() => CanReceive && HasUnlockedSelection();
+    private bool CanPurge() => CanReceive && !HasLockedMessages;
 
     private string KindName => Entity.Kind == EntityKind.Subscription ? "subscription" : "queue";
 
+    private string SourceLabel => SelectedSubQueue.Kind switch
+    {
+        SubQueueKind.DeadLetter => $"the dead-letter queue of {Source.EntityPath}",
+        SubQueueKind.TransferDeadLetter => $"the transfer dead-letter queue of {Source.EntityPath}",
+        _ => Source.EntityPath,
+    };
+
     private static string Plural(int count) => count == 1 ? "1 message" : $"{count:N0} messages";
+
+    private static string Missing(int requested, int done) =>
+        requested == done ? string.Empty : $" {requested - done} could not be found; they may have been received elsewhere.";
 
     private static string SequenceRange(IReadOnlyList<MessageInfo> messages) =>
         messages.Count == 0 ? string.Empty : $" (sequence {messages[0].SequenceNumber}–{messages[^1].SequenceNumber})";

@@ -27,13 +27,16 @@ public partial class SendMessageViewModel : ObservableObject
     public const int MaxCount = 1000;
 
     private readonly IMessageService _messages;
+    private readonly TimeProvider _clock;
 
     /// <summary>Set when cloning a non-text message; resent byte-for-byte because it can't be edited as text.</summary>
     private readonly ReadOnlyMemory<byte>? _binaryBody;
 
-    public SendMessageViewModel(IMessageService messages, string target, bool requiresSession, MessageInfo? template = null)
+    public SendMessageViewModel(
+        IMessageService messages, string target, bool requiresSession, MessageInfo? template = null, TimeProvider? clock = null)
     {
         _messages = messages;
+        _clock = clock ?? TimeProvider.System;
         Target = target;
         RequiresSession = requiresSession;
         ApplicationProperties.CollectionChanged += OnApplicationPropertiesChanged;
@@ -76,7 +79,7 @@ public partial class SendMessageViewModel : ObservableObject
 
     public string Target { get; }
     public bool RequiresSession { get; }
-    public string Title => $"Send to {Target}";
+    public string Title => Heading ?? $"Send to {Target}";
     public bool IsBinaryBody => _binaryBody is not null;
 
     public IReadOnlyList<string> ContentTypes { get; } =
@@ -130,7 +133,20 @@ public partial class SendMessageViewModel : ObservableObject
     private int _count = 1;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    private bool _schedule;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    private string _scheduleAt = "+10m";
+
+    [ObservableProperty]
     private string? _sendError;
+
+    /// <summary>Overrides the dialog title, e.g. when editing a dead-lettered message before resubmitting it.</summary>
+    public string? Heading { get; init; }
 
     /// <summary>Number of messages sent by the last successful send.</summary>
     public int SentCount { get; private set; }
@@ -175,6 +191,11 @@ public partial class SendMessageViewModel : ObservableObject
                 return $"Count must be between 1 and {MaxCount}.";
             }
 
+            if (Schedule && !ScheduleTime.TryParse(ScheduleAt, _clock.GetLocalNow(), out _, out var scheduleError))
+            {
+                return scheduleError;
+            }
+
             if (!string.IsNullOrWhiteSpace(TimeToLive) && !TryParseTimeToLive(TimeToLive, out _))
             {
                 return "Time to live must look like 00:10:00 (hh:mm:ss) or 1.00:00:00 (d.hh:mm:ss).";
@@ -212,6 +233,7 @@ public partial class SendMessageViewModel : ObservableObject
             p => p.Name.Trim(),
             p => PropertyValues.TryParse(p.Value, p.Type, out var value, out _) ? value : null);
         TimeSpan? ttl = TryParseTimeToLive(TimeToLive, out var parsed) ? parsed : null;
+        DateTimeOffset? scheduled = Schedule && ScheduleTime.TryParse(ScheduleAt, _clock.GetLocalNow(), out var at, out _) ? at : null;
 
         return Enumerable.Range(1, Count).Select(i => new OutgoingMessage
         {
@@ -225,6 +247,7 @@ public partial class SendMessageViewModel : ObservableObject
             To = Blank(To),
             ReplyTo = Blank(ReplyTo),
             TimeToLive = ttl,
+            ScheduledEnqueueTime = scheduled,
             ApplicationProperties = properties,
         }).ToList();
     }

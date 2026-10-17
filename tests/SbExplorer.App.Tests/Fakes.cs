@@ -258,8 +258,58 @@ internal sealed class FakeMessageService : IMessageService
         return Task.CompletedTask;
     }
 
-    private static string Key(MessageSource source) =>
-        source.SubQueue == SubQueueKind.None ? source.EntityPath : $"{source.EntityPath}/$DeadLetterQueue";
+    public List<(string Entity, long[] Sequences)> Cancelled { get; } = [];
+    public List<(string Target, long[] Sequences)> Resubmitted { get; } = [];
+
+    /// <summary>Sequence numbers delete/resubmit pretend were already gone.</summary>
+    public HashSet<long> Missing { get; } = [];
+
+    public Task<IReceivedBatch> ReceiveDeferredAsync(MessageSource source, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        var locked = Messages(Key(source)).Where(m => sequenceNumbers.Contains(m.SequenceNumber))
+            .Select(m => m with { LockToken = Guid.NewGuid().ToString(), LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) })
+            .ToList();
+        var batch = new FakeBatch(locked);
+        Batches.Add(batch);
+        return Task.FromResult<IReceivedBatch>(batch);
+    }
+
+    public Task CancelScheduledAsync(string entityName, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        Cancelled.Add((entityName, sequenceNumbers.ToArray()));
+        return Task.CompletedTask;
+    }
+
+    public Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var list = Messages(Key(source));
+        long count = list.Count;
+        list.Clear();
+        progress?.Report(count);
+        return Task.FromResult(count);
+    }
+
+    public Task<IReadOnlyList<long>> DeleteAsync(MessageSource source, IReadOnlyCollection<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        var done = sequenceNumbers.Where(s => !Missing.Contains(s)).ToList();
+        Messages(Key(source)).RemoveAll(m => done.Contains(m.SequenceNumber));
+        return Task.FromResult<IReadOnlyList<long>>(done);
+    }
+
+    public Task<IReadOnlyList<long>> ResubmitAsync(MessageSource source, IReadOnlyCollection<long> sequenceNumbers, string targetEntity, CancellationToken cancellationToken = default)
+    {
+        var done = sequenceNumbers.Where(s => !Missing.Contains(s)).ToList();
+        Messages(Key(source)).RemoveAll(m => done.Contains(m.SequenceNumber));
+        Resubmitted.Add((targetEntity, done.ToArray()));
+        return Task.FromResult<IReadOnlyList<long>>(done);
+    }
+
+    public static string Key(MessageSource source) => source.SubQueue switch
+    {
+        SubQueueKind.DeadLetter => $"{source.EntityPath}/$DeadLetterQueue",
+        SubQueueKind.TransferDeadLetter => $"{source.EntityPath}/$Transfer/$DeadLetterQueue",
+        _ => source.EntityPath,
+    };
 }
 
 internal sealed class FakeBatch(IReadOnlyList<MessageInfo> messages) : IReceivedBatch

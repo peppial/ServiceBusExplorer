@@ -6,6 +6,10 @@ namespace SbExplorer.Infrastructure.Messaging;
 public sealed class AzureMessageService(ServiceBusClient client) : IMessageService
 {
     private const int MaxReceiveBatch = 100;
+    private const int PurgeBatch = 500;
+
+    /// <summary>How many messages a delete or resubmit looks through before giving up on the rest.</summary>
+    private const int MaxScan = 5000;
 
     public async Task<IReadOnlyList<MessageInfo>> PeekAsync(
         MessageSource source, int maxMessages, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
@@ -123,11 +127,146 @@ public sealed class AzureMessageService(ServiceBusClient client) : IMessageServi
         }
     }
 
-    private ServiceBusReceiver CreateReceiver(MessageSource source, ServiceBusReceiveMode mode)
+    public async Task<IReceivedBatch> ReceiveDeferredAsync(
+        MessageSource source, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        try
+        {
+            var received = await receiver.ReceiveDeferredMessagesAsync(sequenceNumbers, cancellationToken);
+            return new ReceivedBatch(receiver, received);
+        }
+        catch
+        {
+            await receiver.DisposeAsync();
+            throw;
+        }
+    }
+
+    public async Task CancelScheduledAsync(string entityName, IReadOnlyList<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        await using var sender = client.CreateSender(entityName);
+        await sender.CancelScheduledMessagesAsync(sequenceNumbers, cancellationToken);
+    }
+
+    public async Task<long> PurgeAsync(MessageSource source, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+    {
+        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.ReceiveAndDelete, prefetch: PurgeBatch);
+        long purged = 0;
+        var wait = TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            // Bodies aren't needed, so nothing is mapped; only the count matters.
+            var batch = await receiver.ReceiveMessagesAsync(PurgeBatch, wait, cancellationToken);
+            if (batch.Count == 0)
+            {
+                return purged;
+            }
+
+            purged += batch.Count;
+            progress?.Report(purged);
+            wait = TimeSpan.FromSeconds(2);
+        }
+    }
+
+    public async Task<IReadOnlyList<long>> DeleteAsync(
+        MessageSource source, IReadOnlyCollection<long> sequenceNumbers, CancellationToken cancellationToken = default)
+    {
+        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        return await ProcessMatchingAsync(receiver, sequenceNumbers, _ => Task.CompletedTask, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<long>> ResubmitAsync(
+        MessageSource source,
+        IReadOnlyCollection<long> sequenceNumbers,
+        string targetEntity,
+        CancellationToken cancellationToken = default)
+    {
+        await using var receiver = CreateReceiver(source, ServiceBusReceiveMode.PeekLock);
+        await using var sender = client.CreateSender(targetEntity);
+        return await ProcessMatchingAsync(
+            receiver,
+            sequenceNumbers,
+            message =>
+            {
+                var copy = OutgoingMessage.CopyOf(MessageMapper.ToInfo(message, isLocked: false));
+                return sender.SendMessageAsync(MessageMapper.ToServiceBusMessage(copy), cancellationToken);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Locks messages batch by batch, runs <paramref name="handle"/> on each requested one and completes it,
+    /// keeping every other message locked so it isn't received twice, then abandons those at the end.
+    /// </summary>
+    private static async Task<IReadOnlyList<long>> ProcessMatchingAsync(
+        ServiceBusReceiver receiver,
+        IReadOnlyCollection<long> sequenceNumbers,
+        Func<ServiceBusReceivedMessage, Task> handle,
+        CancellationToken cancellationToken)
+    {
+        var wanted = sequenceNumbers.ToHashSet();
+        var done = new List<long>(wanted.Count);
+        var skipped = new List<ServiceBusReceivedMessage>();
+        try
+        {
+            var scanned = 0;
+            while (wanted.Count > 0 && scanned < MaxScan)
+            {
+                var batch = await receiver.ReceiveMessagesAsync(MaxReceiveBatch, TimeSpan.FromSeconds(2), cancellationToken);
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                scanned += batch.Count;
+                foreach (var message in batch)
+                {
+                    if (!wanted.Remove(message.SequenceNumber))
+                    {
+                        skipped.Add(message);
+                        continue;
+                    }
+
+                    try
+                    {
+                        await handle(message);
+                    }
+                    catch
+                    {
+                        await receiver.AbandonMessageAsync(message, cancellationToken: CancellationToken.None);
+                        throw;
+                    }
+
+                    await receiver.CompleteMessageAsync(message, cancellationToken);
+                    done.Add(message.SequenceNumber);
+                }
+            }
+        }
+        finally
+        {
+            foreach (var message in skipped)
+            {
+                try
+                {
+                    await receiver.AbandonMessageAsync(message, cancellationToken: CancellationToken.None);
+                }
+                catch (ServiceBusException)
+                {
+                    // Lock already expired; the message is available again either way.
+                }
+            }
+        }
+
+        return done;
+    }
+
+    private ServiceBusReceiver CreateReceiver(MessageSource source, ServiceBusReceiveMode mode, int prefetch = 0)
     {
         var options = new ServiceBusReceiverOptions
         {
             ReceiveMode = mode,
+            PrefetchCount = prefetch,
             SubQueue = source.SubQueue switch
             {
                 SubQueueKind.DeadLetter => SubQueue.DeadLetter,

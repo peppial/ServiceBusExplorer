@@ -114,4 +114,82 @@ public sealed class MessageServiceTests : IAsyncLifetime
         Assert.Equal(3, received.Count);
         Assert.Single(remaining);
     }
+
+    [Fact]
+    public async Task Resubmit_moves_dead_letters_back_without_dead_letter_properties()
+    {
+        await Messages.SendAsync("sbx-tests", [new OutgoingMessage { MessageId = "r1", ApplicationProperties = new Dictionary<string, object?> { ["k"] = "v" } },
+            new OutgoingMessage { MessageId = "r2" }], Ct);
+        await using (var batch = await Messages.ReceivePeekLockAsync(Queue, 2, TimeSpan.FromSeconds(5), Ct))
+        {
+            foreach (var message in batch.Messages.ToList())
+            {
+                await batch.DeadLetterAsync(message, "Broken", null, Ct);
+            }
+        }
+
+        var dead = await Messages.PeekAsync(DeadLetters, 10, cancellationToken: Ct);
+        var r1 = dead.Single(m => m.MessageId == "r1").SequenceNumber;
+
+        var done = await Messages.ResubmitAsync(DeadLetters, [r1], "sbx-tests", Ct);
+
+        Assert.Equal([r1], done);
+        var back = Assert.Single(await Messages.PeekAsync(Queue, 10, cancellationToken: Ct));
+        Assert.Equal("r1", back.MessageId);
+        Assert.Equal("v", back.ApplicationProperties["k"]);
+        Assert.False(back.ApplicationProperties.ContainsKey("DeadLetterReason"));
+        Assert.Equal("r2", Assert.Single(await Messages.PeekAsync(DeadLetters, 10, cancellationToken: Ct)).MessageId);
+    }
+
+    [Fact]
+    public async Task Delete_removes_only_the_requested_messages()
+    {
+        await Messages.SendAsync("sbx-tests", Enumerable.Range(0, 5).Select(i => new OutgoingMessage { MessageId = $"d{i}" }).ToList(), Ct);
+        var all = await Messages.PeekAsync(Queue, 10, cancellationToken: Ct);
+        var targets = new[] { all[1].SequenceNumber, all[3].SequenceNumber, 999_999 };
+
+        var done = await Messages.DeleteAsync(Queue, targets, Ct);
+
+        Assert.Equal([all[1].SequenceNumber, all[3].SequenceNumber], done.Order());
+        Assert.Equal(["d0", "d2", "d4"], (await Messages.PeekAsync(Queue, 10, cancellationToken: Ct)).Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task Purge_empties_the_queue()
+    {
+        await Messages.SendAsync("sbx-tests", Enumerable.Range(0, 30).Select(_ => new OutgoingMessage()).ToList(), Ct);
+
+        var purged = await Messages.PurgeAsync(Queue, cancellationToken: Ct);
+
+        Assert.Equal(30, purged);
+        Assert.Empty(await Messages.PeekAsync(Queue, 10, cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task Deferred_and_scheduled_round_trip()
+    {
+        await Messages.SendAsync("sbx-tests",
+        [
+            new OutgoingMessage { MessageId = "later", ScheduledEnqueueTime = DateTimeOffset.UtcNow.AddMinutes(30) },
+            new OutgoingMessage { MessageId = "defer-me" },
+        ], Ct);
+        await using (var batch = await Messages.ReceivePeekLockAsync(Queue, 1, TimeSpan.FromSeconds(5), Ct))
+        {
+            await batch.DeferAsync(batch.Messages.Single(), Ct);
+        }
+
+        var peeked = await Messages.PeekAsync(Queue, 10, cancellationToken: Ct);
+        var scheduled = peeked.Single(m => m.MessageId == "later");
+        var deferred = peeked.Single(m => m.MessageId == "defer-me");
+        Assert.Equal(MessageState.Scheduled, scheduled.State);
+        Assert.Equal(MessageState.Deferred, deferred.State);
+
+        await using (var batch = await Messages.ReceiveDeferredAsync(Queue, [deferred.SequenceNumber], Ct))
+        {
+            await batch.CompleteAsync(batch.Messages.Single(), Ct);
+        }
+
+        await Messages.CancelScheduledAsync("sbx-tests", [scheduled.SequenceNumber], Ct);
+        Assert.Empty(await Messages.PeekAsync(Queue, 10, cancellationToken: Ct));
+    }
 }

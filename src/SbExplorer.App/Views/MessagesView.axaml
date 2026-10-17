@@ -8,6 +8,20 @@
       <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
     </Border>
 
+    <ListBox DockPanel.Dock="Top" x:Name="SubQueueSelector" Classes="segmented" Margin="0,0,0,8"
+             ItemsSource="{Binding SubQueues}" SelectedItem="{Binding SelectedSubQueue}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:SubQueueOption">
+          <TextBlock Text="{Binding Label}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
     <WrapPanel DockPanel.Dock="Top" ItemSpacing="6" LineSpacing="6" Margin="0,0,0,8">
       <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
         <TextBlock Text="Max" VerticalAlignment="Center" />
@@ -21,7 +35,22 @@
       <Button Content="Receive (lock)" Command="{Binding ReceiveLockedCommand}"
               ToolTip.Tip="Lock messages so you can complete, abandon, dead-letter or defer them" />
       <Button Content="Receive and delete…" Command="{Binding ReceiveAndDeleteCommand}" />
+    </WrapPanel>
+
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="6" LineSpacing="6" Margin="0,0,0,8">
+      <Button Content="Resubmit…" Command="{Binding ResubmitCommand}" IsVisible="{Binding IsDeadLetterView}"
+              ToolTip.Tip="Send copies of the selected messages back and remove them from the dead-letter queue" />
+      <Button Content="Edit and resubmit…" Command="{Binding EditAndResubmitCommand}" IsVisible="{Binding IsDeadLetterView}" />
+      <Button Content="Receive deferred" Command="{Binding ReceiveDeferredCommand}" IsVisible="{Binding IsActiveView}"
+              ToolTip.Tip="Lock the selected deferred messages so they can be completed or abandoned" />
+      <Button Content="Cancel scheduled…" Command="{Binding CancelScheduledCommand}" IsVisible="{Binding IsActiveView}" />
+      <Button Content="Clone and send…" Command="{Binding ResendCommand}" />
       <Button Content="{Binding SendLabel}" Command="{Binding SendCommand}" />
+      <Button Content="Delete selected…" Command="{Binding DeleteCommand}" />
+      <Button Content="Purge…" Classes="danger-outline" Command="{Binding PurgeCommand}" />
+      <Button Content="Stop" Command="{Binding PurgeCancelCommand}" IsVisible="{Binding PurgeCommand.IsRunning}" />
+      <TextBlock Text="{Binding SelectionSummary}" VerticalAlignment="Center" Opacity="0.7"
+                 IsVisible="{Binding SelectionSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </WrapPanel>
 
     <Border DockPanel.Dock="Top" Classes="locked" IsVisible="{Binding HasLockedMessages}" Margin="0,0,0,8">
@@ -46,18 +75,20 @@
                IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
     <Grid RowDefinitions="*,4,*" IsVisible="{Binding CanBrowse}">
-      <TableView x:Name="MessageTable" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}">
+      <TableView x:Name="MessageTable" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}"
+                 SelectionMode="Multiple" SelectionChanged="OnSelectionChanged">
         <TableView.Columns>
           <TableViewColumn Header="Seq #" Binding="{Binding SequenceNumber, x:DataType=vm:MessageRowViewModel}" Width="64" />
           <TableViewColumn Header="Message ID" Binding="{Binding MessageId, x:DataType=vm:MessageRowViewModel}" Width="150" />
           <TableViewColumn Header="Subject" Binding="{Binding Subject, x:DataType=vm:MessageRowViewModel}" Width="130" />
+          <TableViewColumn x:Name="DeadLetterReasonColumn" Header="Dead-letter reason" IsVisible="False"
+                           Binding="{Binding DeadLetterReason, x:DataType=vm:MessageRowViewModel}" Width="170" />
           <TableViewColumn Header="Session" Binding="{Binding SessionId, x:DataType=vm:MessageRowViewModel}" Width="110" />
           <TableViewColumn Header="Enqueued" Binding="{Binding Enqueued, x:DataType=vm:MessageRowViewModel}" Width="145" />
           <TableViewColumn Header="State" Binding="{Binding State, x:DataType=vm:MessageRowViewModel}" Width="78" />
           <TableViewColumn Header="Deliveries" Binding="{Binding DeliveryCount, x:DataType=vm:MessageRowViewModel}" Width="72" />
           <TableViewColumn Header="Size" Binding="{Binding Size, x:DataType=vm:MessageRowViewModel}" Width="66" />
           <TableViewColumn Header="Content type" Binding="{Binding ContentType, x:DataType=vm:MessageRowViewModel}" Width="140" />
-          <TableViewColumn Header="Dead-letter reason" Binding="{Binding DeadLetterReason, x:DataType=vm:MessageRowViewModel}" Width="160" />
         </TableView.Columns>
       </TableView>
 

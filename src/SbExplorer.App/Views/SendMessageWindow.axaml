@@ -44,7 +44,7 @@
       </TabItem>
       <TabItem Header="Properties">
         <ScrollViewer>
-          <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8,0,0">
+          <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8,0,0">
             <Grid.Styles>
               <Style Selector="TextBlock">
                 <Setter Property="VerticalAlignment" Value="Center" />
@@ -69,6 +69,9 @@
             <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding ReplyTo}" />
             <TextBlock Grid.Row="7" Text="Time to live" />
             <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding TimeToLive}" PlaceholderText="hh:mm:ss, or empty for the entity default" />
+            <CheckBox Grid.Row="8" Content="Schedule for" IsChecked="{Binding Schedule}" />
+            <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding ScheduleAt}" IsEnabled="{Binding Schedule}"
+                     PlaceholderText="2026-10-17 18:30 (local time), or +15m, +2h, +1d" />
           </Grid>
         </ScrollViewer>
       </TabItem>

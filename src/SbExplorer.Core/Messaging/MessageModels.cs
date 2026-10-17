@@ -66,6 +66,28 @@ public sealed record MessageInfo
 /// <summary>A message to send.</summary>
 public sealed record OutgoingMessage
 {
+    /// <summary>Application properties Service Bus adds when dead-lettering; not copied when resubmitting.</summary>
+    public static readonly IReadOnlySet<string> DeadLetterProperties =
+        new HashSet<string>(StringComparer.Ordinal) { "DeadLetterReason", "DeadLetterErrorDescription" };
+
+    /// <summary>A copy of a received message ready to send again, without broker-assigned or dead-letter state.</summary>
+    public static OutgoingMessage CopyOf(MessageInfo message) => new()
+    {
+        Body = message.Body,
+        ContentType = message.ContentType,
+        MessageId = message.MessageId,
+        Subject = message.Subject,
+        CorrelationId = message.CorrelationId,
+        SessionId = message.SessionId,
+        PartitionKey = message.PartitionKey,
+        To = message.To,
+        ReplyTo = message.ReplyTo,
+        ReplyToSessionId = message.ReplyToSessionId,
+        ApplicationProperties = message.ApplicationProperties
+            .Where(p => !DeadLetterProperties.Contains(p.Key))
+            .ToDictionary(p => p.Key, p => p.Value),
+    };
+
     public ReadOnlyMemory<byte> Body { get; init; }
     public string? ContentType { get; init; }
     public string? MessageId { get; init; }
