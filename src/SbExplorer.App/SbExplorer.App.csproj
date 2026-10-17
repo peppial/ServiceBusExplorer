@@ -8,6 +8,9 @@
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="SbExplorer.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The .ico and .icns are packaging assets; only the PNG is loaded at runtime. -->
     <AvaloniaResource Include="Assets\icon.png" />
   </ItemGroup>

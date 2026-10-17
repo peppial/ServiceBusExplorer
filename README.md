@@ -3,7 +3,9 @@
 A cross-platform desktop app for browsing and managing Azure Service Bus namespaces, on Windows, macOS and Linux.
 It's a rewrite on .NET 10 and [Avalonia](https://avaloniaui.net/) of the Windows-only
 [Service Bus Explorer](https://github.com/paolosalvatori/ServiceBusExplorer), using the current
-`Azure.Messaging.ServiceBus` SDK.
+`Azure.Messaging.ServiceBus` SDK. The layout follows the original: File / Edit / Actions / View / Help menus, the
+namespace tree with right-click menus, a "View Queue" panel with Description, Messages and Deadletter tabs and its
+button bar, and the Log window.
 
 ## What it does
 
@@ -51,7 +53,8 @@ docker compose -f docker/emulator.yml up -d   # first start takes a minute or tw
 dotnet run docker/seed.cs                     # clears and fills the sample entities with messages
 ```
 
-In the app, choose **+ Add** and then **Use local emulator**. The emulator caps message time-to-live at one hour, so
+In the app, choose **File > Connect**, click **Local emulator**, then **OK** (or **Save** it first). The emulator caps
+message time-to-live at one hour, so
 run the seed script again when the messages expire. It also reports zero for most message counts and doesn't keep user
 metadata. Those are emulator limits, not app bugs.
 

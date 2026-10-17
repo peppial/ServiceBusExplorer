@@ -430,6 +430,90 @@ public partial class ExplorerViewModel(
         }
     }
 
+    /// <summary>Copy Namespace URL / Copy Queue URL / Copy Deadletter Queue URL from the tree's context menu.</summary>
+    [RelayCommand]
+    private async Task CopyUrlAsync(string? which)
+    {
+        var url = which switch
+        {
+            "deadletter" when SelectedEntity is { } entity => $"{NamespaceUri}{entity.Path}/$DeadLetterQueue",
+            "entity" when SelectedEntity is { } entity => $"{NamespaceUri}{entity.Path}",
+            _ => NamespaceUri,
+        };
+        await dialogs.CopyTextAsync(url);
+        log?.Info($"Copied {url} to the clipboard.");
+    }
+
+    /// <summary>Expand Subtree: opens the node and everything under it, loading subscriptions and rules.</summary>
+    [RelayCommand]
+    private async Task ExpandSubtreeAsync()
+    {
+        if (SelectedNode is { } node)
+        {
+            await ExpandAsync(node);
+            ApplyFilter();
+        }
+    }
+
+    [RelayCommand]
+    private void CollapseSubtree()
+    {
+        foreach (var node in SelectedNode?.SelfAndDescendants() ?? [])
+        {
+            node.IsExpanded = false;
+        }
+    }
+
+    /// <summary>Export Queue / Export Topics / Export Entities: exports the right-clicked node without asking.</summary>
+    [RelayCommand(CanExecute = nameof(CanManage))]
+    private async Task ExportSelectedAsync()
+    {
+        IReadOnlyCollection<EntityInfo>? only = SelectedNode switch
+        {
+            EntityNodeViewModel { Entity: var entity } => [entity],
+            FolderNodeViewModel folder => folder.Children.OfType<EntityNodeViewModel>().Select(n => n.Entity).ToList(),
+            _ => null,
+        };
+        var name = SelectedNode switch
+        {
+            EntityNodeViewModel { Entity: var entity } => entity.Name,
+            FolderNodeViewModel folder => $"{session.FullyQualifiedNamespace.Split('.')[0]}-{folder.Title.ToLowerInvariant()}",
+            _ => session.FullyQualifiedNamespace.Split('.')[0],
+        };
+
+        try
+        {
+            var definition = await _transfer.ExportAsync(session.FullyQualifiedNamespace, only);
+            var json = System.Text.Encoding.UTF8.GetBytes(NamespaceTransfer.Serialize(definition));
+            Report(await dialogs.SaveFileAsync($"{name}-entities.json", json)
+                ? $"Exported {Plural(definition.EntityCount, "entity definition", "entity definitions")}."
+                : "Export cancelled.");
+        }
+        catch (Exception ex)
+        {
+            ReportError($"Export failed: {ErrorMessages.Describe(ex)}");
+        }
+    }
+
+    private static async Task ExpandAsync(TreeNodeViewModel node)
+    {
+        if (node is MessageNodeViewModel)
+        {
+            return;
+        }
+
+        if (node is EntityNodeViewModel entityNode)
+        {
+            await entityNode.EnsureLoadedAsync();
+        }
+
+        node.IsExpanded = true;
+        foreach (var child in node.Children.ToList())
+        {
+            await ExpandAsync(child);
+        }
+    }
+
     /// <summary>After a create or update: reload the tree, select the entity and log the result.</summary>
     internal async Task CompleteSaveAsync(EntityEditorViewModel editor)
     {

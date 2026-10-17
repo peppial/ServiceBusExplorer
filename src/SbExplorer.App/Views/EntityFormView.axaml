@@ -94,7 +94,7 @@
     </Grid>
 
     <CheckBox Content="Create with a filter instead of the default rule (all messages)" IsChecked="{Binding UseInitialRule}"
-              Margin="2,6,0,0" IsVisible="{Binding IsSubscription}" IsEnabled="{Binding IsNew}" />
+              Margin="2,6,0,0" IsVisible="{Binding ShowsInitialRuleOption}" />
 
     <!-- Rule (HandleRuleControl): name, filter and action. -->
     <StackPanel IsVisible="{Binding ShowsRuleEditor}">

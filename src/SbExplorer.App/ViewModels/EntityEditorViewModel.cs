@@ -70,6 +70,9 @@ public partial class EntityEditorViewModel : ObservableObject
     /// <summary>A new subscription can start with a filter instead of the match-all $Default rule.</summary>
     public bool ShowsRuleEditor => IsRule || (IsSubscription && IsNew && UseInitialRule);
 
+    /// <summary>Only a new subscription can choose its first rule.</summary>
+    public bool ShowsInitialRuleOption => IsSubscription && IsNew;
+
     /// <summary>Sessions, duplicate detection and partitioning are fixed once the entity exists.</summary>
     public bool CanChangeCreationOnlySettings => IsNew;
 
