@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SbExplorer.Core/SbExplorer.Core.csproj" />
+    <Project Path="src/SbExplorer.Infrastructure/SbExplorer.Infrastructure.csproj" />
+    <Project Path="src/SbExplorer.App/SbExplorer.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SbExplorer.App.Tests/SbExplorer.App.Tests.csproj" />
+  </Folder>
+</Solution>
