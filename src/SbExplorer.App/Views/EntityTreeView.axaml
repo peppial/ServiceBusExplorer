@@ -20,16 +20,17 @@
                  IsVisible="{Binding RefreshCommand.IsRunning}" />
     <Border Classes="white">
       <TreeView x:Name="EntityTree" ItemsSource="{Binding TreeRoots}" SelectedItem="{Binding SelectedNode}"
-                Background="White">
+                Background="White" Padding="2,2,0,0">
         <TreeView.Styles>
           <Style Selector="TreeViewItem" x:DataType="vm:TreeNodeViewModel">
+            <Setter Property="Theme" Value="{StaticResource ClassicTreeViewItem}" />
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="IsVisible" Value="{Binding IsVisible}" />
           </Style>
         </TreeView.Styles>
         <TreeView.ItemTemplate>
-          <TreeDataTemplate x:DataType="vm:TreeNodeViewModel" ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal" Spacing="5" Background="Transparent"
+          <TreeDataTemplate x:DataType="vm:TreeNodeViewModel" ItemsSource="{Binding DisplayChildren}">
+            <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent"
                         Opacity="{Binding IsDimmed, Converter={x:Static vm:Converters.DimmedOpacity}}">
               <Image Width="16" Height="16" VerticalAlignment="Center"
                      Source="{Binding IconKey, Converter={x:Static views:IconConverter.Instance}}"

@@ -121,6 +121,17 @@ public partial class EntityTreeView : UserControl
                     .. expand,
                 ];
 
+            case GroupNodeViewModel { Parent.Entity.Kind: EntityKind.Topic }:
+                return
+                [
+                    Item("Create Subscription", explorer.NewSubscriptionCommand),
+                    Item("Refresh Subscriptions", explorer.RefreshCommand),
+                    .. expand,
+                ];
+
+            case GroupNodeViewModel:
+                return [Item("Add Rule", explorer.NewRuleCommand), Item("Refresh Rules", explorer.RefreshCommand)];
+
             case EntityNodeViewModel { Entity.Kind: EntityKind.Rule }:
                 return [Item("Remove Rule", explorer.DeleteCommand, enabled: manage)];
 

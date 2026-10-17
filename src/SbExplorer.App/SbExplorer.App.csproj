@@ -13,6 +13,7 @@
   <ItemGroup>
     <!-- The .ico and .icns are packaging assets; only the PNG is loaded at runtime. -->
     <AvaloniaResource Include="Assets\icon.png" />
+    <AvaloniaResource Include="Assets\Tree\*.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SbExplorer.Core\SbExplorer.Core.csproj" />

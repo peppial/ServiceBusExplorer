@@ -1,3 +1,7 @@
 This project is a cross-platform rewrite inspired by Service Bus Explorer
 (https://github.com/paolosalvatori/ServiceBusExplorer), which is licensed under
 the MIT License, Copyright (c) 2015 Microsoft Azure.
+
+The tree and panel icons in src/SbExplorer.App/Assets/Tree are taken from that project's Icons and Images
+folders (MIT License, Copyright (c) 2015 Microsoft Azure). The 32 px frames were extracted from its .ico files;
+the grey "disabled" icons were scaled down from their 256 px frames.

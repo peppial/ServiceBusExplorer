@@ -128,4 +128,36 @@ public class TreeContextMenuTests
             .Concat(TopLevel.GetTopLevel(item)!.GetVisualDescendants().OfType<ContextMenu>()).Distinct());
         Assert.True(menu.IsOpen);
     }
+
+    [AvaloniaFact]
+    public async Task Topics_and_subscriptions_show_subscriptions_and_rules_folders()
+    {
+        await _explorer.RefreshCommand.ExecuteAsync(null);
+        var events = (EntityNodeViewModel)Node("events");
+        await events.EnsureLoadedAsync(TestContext.Current.CancellationToken);
+
+        var subscriptions = Assert.IsType<GroupNodeViewModel>(Assert.Single(events.DisplayChildren.Cast<TreeNodeViewModel>()));
+        Assert.Equal(("Subscriptions", "Group", true), (subscriptions.Name, subscriptions.IconKey, subscriptions.IsExpanded));
+        Assert.Equal(["all"], subscriptions.DisplayChildren.Cast<TreeNodeViewModel>().Select(n => n.Name));
+
+        var all = (EntityNodeViewModel)Node("all");
+        var rules = Assert.IsType<GroupNodeViewModel>(Assert.Single(all.DisplayChildren.Cast<TreeNodeViewModel>()));
+        Assert.Equal("Rules", rules.Name);
+
+        Assert.Equal(["Create Subscription", "Refresh Subscriptions", "Expand Subtree", "Collapse Subtree"], Headers(subscriptions));
+        Assert.True(_explorer.NewSubscriptionCommand.CanExecute(null));
+        Assert.Equal(["Add Rule", "Refresh Rules"], Headers(rules));
+        Assert.True(_explorer.NewRuleCommand.CanExecute(null));
+        Assert.Equal("Rules: events/Subscriptions/all", _explorer.DetailsTitle);
+    }
+
+    [AvaloniaFact]
+    public void Every_icon_key_has_an_original_icon()
+    {
+        foreach (var key in new[] { "Namespace", "QueuesFolder", "TopicsFolder", "Queue", "QueueDisabled", "Topic", "TopicDisabled",
+                     "Subscription", "SubscriptionDisabled", "Rule", "Group", "Header", "Log" })
+        {
+            Assert.NotNull(IconConverter.Load(key));
+        }
+    }
 }

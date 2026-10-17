@@ -18,8 +18,11 @@ public abstract partial class TreeNodeViewModel : ObservableObject
     /// <summary>The text shown in the tree, e.g. <c>orders (16, 3)</c>.</summary>
     public virtual string DisplayName => Name;
 
-    /// <summary>Key of the icon resource: Namespace, Queue, Topic, Subscription or Rule.</summary>
+    /// <summary>Name of the icon in Assets/Tree: Namespace, QueuesFolder, Queue, TopicDisabled, Group, Rule, …</summary>
     public virtual string? IconKey => null;
+
+    /// <summary>What the tree shows under this node; topics and subscriptions add a Subscriptions or Rules folder.</summary>
+    public virtual System.Collections.IEnumerable DisplayChildren => Children;
     public virtual string? ActiveBadge => null;
     public virtual string? DeadLetterBadge => null;
     public bool HasDeadLetters => DeadLetterBadge is not null;
@@ -59,7 +62,7 @@ public sealed class FolderNodeViewModel(string title, EntityKind kind, string? i
     public string Title { get; } = title;
     public override string Name => $"{Title} ({Children.Count})";
     public override string DisplayName => Title;
-    public override string? IconKey => iconKey ?? Kind.ToString();
+    public override string? IconKey => iconKey ?? (Kind == EntityKind.Topic ? "TopicsFolder" : "QueuesFolder");
     public override string Glyph => "▤";
 
     public void SetChildren(IEnumerable<TreeNodeViewModel> children)
@@ -72,6 +75,23 @@ public sealed class FolderNodeViewModel(string title, EntityKind kind, string? i
 
         OnPropertyChanged(nameof(Name));
     }
+}
+
+/// <summary>The "Subscriptions" or "Rules" folder under a topic or subscription; shows its parent's children.</summary>
+public sealed class GroupNodeViewModel : TreeNodeViewModel
+{
+    public GroupNodeViewModel(EntityNodeViewModel parent, string title)
+    {
+        Parent = parent;
+        Name = title;
+        IsExpanded = true;
+    }
+
+    public EntityNodeViewModel Parent { get; }
+    public override string Name { get; }
+    public override string Glyph => string.Empty;
+    public override string IconKey => "Group";
+    public override System.Collections.IEnumerable DisplayChildren => Parent.Children;
 }
 
 /// <summary>The tree's root: the namespace URI, holding the Queues and Topics folders.</summary>
@@ -118,7 +138,19 @@ public partial class EntityNodeViewModel : TreeNodeViewModel
 
     public override EntityInfo Entity { get; }
     public override string Name => Entity.Name;
-    public override string IconKey => Entity.Kind.ToString();
+
+    // Disabled queues, topics and subscriptions use the original's grey icons.
+    public override string IconKey => Entity.IsDisabled && Entity.Kind != EntityKind.Rule ? $"{Entity.Kind}Disabled" : Entity.Kind.ToString();
+
+    private GroupNodeViewModel? _group;
+
+    /// <summary>Like the original, subscriptions sit in a "Subscriptions" folder and rules in a "Rules" folder.</summary>
+    public override System.Collections.IEnumerable DisplayChildren => Entity.Kind switch
+    {
+        EntityKind.Topic => new[] { _group ??= new GroupNodeViewModel(this, "Subscriptions") },
+        EntityKind.Subscription => new[] { _group ??= new GroupNodeViewModel(this, "Rules") },
+        _ => Children,
+    };
 
     /// <summary>Queues and subscriptions show (active, dead-lettered) like the original explorer.</summary>
     public override string DisplayName => Entity.Counts is { } counts
@@ -140,7 +172,7 @@ public partial class EntityNodeViewModel : TreeNodeViewModel
     public override string? DeadLetterBadge =>
         Entity.Counts is { DeadLetter: > 0 } counts ? $"{DisplayFormat.Count(counts.DeadLetter)} DLQ" : null;
 
-    public override bool IsDimmed => Entity.IsDisabled;
+    public override bool IsDimmed => false;
 
     /// <summary>Loads children once; concurrent callers share the same load.</summary>
     public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) =>

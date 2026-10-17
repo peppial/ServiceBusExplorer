@@ -50,6 +50,7 @@ public partial class ExplorerViewModel(
     {
         EntityNodeViewModel { Entity: var e } => $"View {e.Kind}: {e.Name}",
         FolderNodeViewModel folder => folder.Title,
+        GroupNodeViewModel group => $"{group.Name}: {group.Parent.Entity.Path}",
         NamespaceNodeViewModel => $"Service Bus Namespace: {NamespaceUri}",
         _ => "Service Bus Explorer",
     };
@@ -564,14 +565,17 @@ public partial class ExplorerViewModel(
         Report(message, isError: true);
     }
 
-    private string? SelectedTopic => SelectedEntity switch
+    private string? SelectedTopic => SelectedNode is GroupNodeViewModel group ? group.Parent.Entity.Path.Split('/')[0] : SelectedEntity switch
     {
         { Kind: EntityKind.Topic } topic => topic.Name,
         { Kind: EntityKind.Subscription or EntityKind.Rule } child => child.Path.Split('/')[0],
         _ => null,
     };
 
-    private (string Topic, string Subscription)? SelectedSubscription => SelectedEntity switch
+    private (string Topic, string Subscription)? SelectedSubscription =>
+        SelectedNode is GroupNodeViewModel { Parent.Entity: { Kind: EntityKind.Subscription } owner }
+            ? (owner.Path.Split('/')[0], owner.Name)
+            : SelectedEntity switch
     {
         { Kind: EntityKind.Subscription } s => (s.Path.Split('/')[0], s.Name),
         { Kind: EntityKind.Rule } r => (r.Path.Split('/')[0], r.Path.Split('/')[2]),

@@ -89,7 +89,7 @@ public class EntityManagementTests
 
         Assert.Equal("status orders Disabled", _entities.Calls.Single());
         Assert.Equal("orders", _vm.SelectedEntity?.Name);
-        Assert.True(_vm.SelectedNode!.IsDimmed);
+        Assert.Equal("QueueDisabled", _vm.SelectedNode!.IconKey);
     }
 
     [Fact]

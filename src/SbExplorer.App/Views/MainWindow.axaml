@@ -45,14 +45,9 @@
         <HeaderedContentControl Classes="panel" Header="Service Bus Namespace">
           <Panel>
             <views:EntityTreeView x:Name="TreePanel" DataContext="{Binding Explorer}" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsConnected}" />
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
-                        IsVisible="{Binding !IsConnected}">
-              <TextBlock Text="Not connected." HorizontalAlignment="Center" Opacity="0.7" />
-              <Button Content="Connect..." Command="{Binding ConnectCommand}" HorizontalAlignment="Center" IsEnabled="{Binding !IsConnecting}" />
-              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConnecting}" HorizontalAlignment="Center">
-                <TextBlock Text="Connecting…" VerticalAlignment="Center" />
-                <Button Content="Cancel" Classes="small" Command="{Binding CancelConnectCommand}" />
-              </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="8" VerticalAlignment="Top" IsVisible="{Binding IsConnecting}">
+              <TextBlock Text="Connecting…" VerticalAlignment="Center" />
+              <Button Content="Cancel" Classes="small" Command="{Binding CancelConnectCommand}" />
             </StackPanel>
           </Panel>
         </HeaderedContentControl>
@@ -67,7 +62,7 @@
 
       <GridSplitter Grid.Row="1" ResizeDirection="Rows" Background="Transparent" IsVisible="{Binding IsLogVisible}" />
 
-      <HeaderedContentControl Grid.Row="2" Classes="panel" Header="Log" IsVisible="{Binding IsLogVisible}">
+      <HeaderedContentControl Grid.Row="2" Classes="panel log" Header="Log" IsVisible="{Binding IsLogVisible}">
         <views:LogView x:Name="LogPanel" />
       </HeaderedContentControl>
     </Grid>

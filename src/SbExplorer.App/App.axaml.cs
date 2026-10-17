@@ -28,6 +28,16 @@ public partial class App : Application
             desktop.MainWindow = new MainWindow { DataContext = viewModel };
             desktop.ShutdownRequested += async (_, _) => await viewModel.DisconnectCommand.ExecuteAsync(null);
             viewModel.LoadCommand.Execute(null);
+
+            // Like the original, start with empty panels and go straight to "Connect to a Service Bus Namespace".
+            desktop.MainWindow.Opened += async (_, _) =>
+            {
+                await viewModel.LoadCommand.ExecuteAsync(null);
+                if (!viewModel.IsConnected)
+                {
+                    await viewModel.ConnectCommand.ExecuteAsync(null);
+                }
+            };
             Services.GetRequiredService<ILogService>().Info("Service Bus Explorer started. Use File > Connect to open a namespace.");
         }
 

@@ -158,13 +158,14 @@ public class ExplorerViewModelTests
     }
 
     [Fact]
-    public async Task Disabled_entities_are_dimmed()
+    public async Task Disabled_entities_use_the_grey_icons()
     {
         _entities.Queues.Add(Queue("old") with { Status = "Disabled" });
 
         await _vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.True(QueuesFolder.Children.Single(c => c.Name == "old").IsDimmed);
-        Assert.False(QueuesFolder.Children.Single(c => c.Name == "orders").IsDimmed);
+        Assert.Equal("QueueDisabled", QueuesFolder.Children.Single(c => c.Name == "old").IconKey);
+        Assert.Equal("Queue", QueuesFolder.Children.Single(c => c.Name == "orders").IconKey);
+        Assert.Equal(("QueuesFolder", "TopicsFolder"), (QueuesFolder.IconKey, TopicsFolder.IconKey));
     }
 }

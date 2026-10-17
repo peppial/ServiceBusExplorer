@@ -2,9 +2,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="SbExplorer.App.App"
              Name="Service Bus Explorer"
+             xmlns:views="using:SbExplorer.App.Views"
              RequestedThemeVariant="Light">
   <!-- Colors and layout follow the original Windows Service Bus Explorer. -->
   <Application.Resources>
+    <ResourceDictionary>
+    <ResourceDictionary.MergedDictionaries>
+      <ResourceInclude Source="avares://ServiceBusExplorer/Themes/ClassicControls.axaml" />
+    </ResourceDictionary.MergedDictionaries>
     <FontFamily x:Key="MonoFont">Courier New, Menlo, Consolas, DejaVu Sans Mono, monospace</FontFamily>
     <FontFamily x:Key="UiFont">Segoe UI, Tahoma, Helvetica Neue, Arial, DejaVu Sans, sans-serif</FontFamily>
 
@@ -26,68 +31,169 @@
       <GradientStop Offset="1" Color="#C9DCF2" />
     </LinearGradientBrush>
 
-    <!-- Entity icons, drawn so they work at any scale. -->
-    <DrawingImage x:Key="NamespaceIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#2F7FD8" Geometry="M8,0.5 A7.5,7.5 0 1 1 7.99,0.5 Z">
-          <GeometryDrawing.Pen><Pen Brush="#1D5FAE" Thickness="0.8" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Geometry="M8,0.8 C4.5,4 4.5,12 8,15.2 M8,0.8 C11.5,4 11.5,12 8,15.2 M1,8 L15,8 M2.2,4.4 L13.8,4.4 M2.2,11.6 L13.8,11.6">
-          <GeometryDrawing.Pen><Pen Brush="#DDEBFA" Thickness="0.9" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
-    <DrawingImage x:Key="QueueIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#2B67C6" Geometry="M3,3 L13,3 L13,13 C13,14.8 3,14.8 3,13 Z">
-          <GeometryDrawing.Pen><Pen Brush="#174A97" Thickness="0.7" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Brush="#9CC3F5" Geometry="M3,3 C3,1.2 13,1.2 13,3 C13,4.8 3,4.8 3,3 Z">
-          <GeometryDrawing.Pen><Pen Brush="#174A97" Thickness="0.7" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Geometry="M3,7.3 C3,8.8 13,8.8 13,7.3 M3,10.4 C3,11.9 13,11.9 13,10.4">
-          <GeometryDrawing.Pen><Pen Brush="#DDEBFA" Thickness="0.9" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
-    <DrawingImage x:Key="TopicIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#3B9E4A" Geometry="M8,1 L12.5,8 L3.5,8 Z">
-          <GeometryDrawing.Pen><Pen Brush="#256B30" Thickness="0.7" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Brush="#2B67C6" Geometry="M4,8 L8,15 L0.3,15 Z">
-          <GeometryDrawing.Pen><Pen Brush="#174A97" Thickness="0.7" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Brush="#2B67C6" Geometry="M12,8 L15.7,15 L8,15 Z">
-          <GeometryDrawing.Pen><Pen Brush="#174A97" Thickness="0.7" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
-    <DrawingImage x:Key="SubscriptionIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#F4C542" Geometry="M1,3.5 L15,3.5 L15,12.5 L1,12.5 Z">
-          <GeometryDrawing.Pen><Pen Brush="#A87A0C" Thickness="0.8" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-        <GeometryDrawing Geometry="M1.3,3.8 L8,9 L14.7,3.8">
-          <GeometryDrawing.Pen><Pen Brush="#A87A0C" Thickness="0.9" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
-    <DrawingImage x:Key="RuleIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#8C6BD6" Geometry="M1,2 L15,2 L9.5,8.5 L9.5,14 L6.5,12.5 L6.5,8.5 Z">
-          <GeometryDrawing.Pen><Pen Brush="#5B3FA6" Thickness="0.8" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
-    <DrawingImage x:Key="DisabledOverlayIcon">
-      <DrawingGroup>
-        <GeometryDrawing Brush="#C42B1C" Geometry="M8,0.5 A7.5,7.5 0 1 1 7.99,0.5 Z" />
-        <GeometryDrawing Geometry="M4,8 L12,8">
-          <GeometryDrawing.Pen><Pen Brush="White" Thickness="2.2" /></GeometryDrawing.Pen>
-        </GeometryDrawing>
-      </DrawingGroup>
-    </DrawingImage>
+    <!-- Classic Windows control colours, applied through the Fluent theme's own resource keys. -->
+    <LinearGradientBrush x:Key="ClassicButtonBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#F6F6F6" />
+      <GradientStop Offset="0.49" Color="#EBEBEB" />
+      <GradientStop Offset="0.5" Color="#DDDDDD" />
+      <GradientStop Offset="1" Color="#CFCFCF" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="ClassicButtonHoverBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#EAF6FD" />
+      <GradientStop Offset="0.49" Color="#D9F0FC" />
+      <GradientStop Offset="0.5" Color="#BEE6FD" />
+      <GradientStop Offset="1" Color="#A7D9F5" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="ClassicButtonPressedBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+      <GradientStop Offset="0" Color="#E5F4FC" />
+      <GradientStop Offset="0.49" Color="#C4E5F6" />
+      <GradientStop Offset="0.5" Color="#98D1EF" />
+      <GradientStop Offset="1" Color="#68B3DB" />
+    </LinearGradientBrush>
+    <StaticResource x:Key="ButtonBackground" ResourceKey="ClassicButtonBrush" />
+    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="ClassicButtonHoverBrush" />
+    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="ClassicButtonPressedBrush" />
+    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="ButtonBorderBrush" Color="#707070" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#2C628B" />
+    <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="#ADB2B5" />
+    <SolidColorBrush x:Key="ButtonForeground" Color="#000000" />
+    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#000000" />
+    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#000000" />
+    <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#838383" />
+    <Thickness x:Key="ButtonPadding">10,2,10,3</Thickness>
+
+    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#ABADB3" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#7EB4EA" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#3399FF" />
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#F4F4F4" />
+    <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
+
+    <x:Double x:Key="ComboBoxMinHeight">22</x:Double>
+    <Thickness x:Key="ComboBoxPadding">5,2,0,2</Thickness>
+    <StaticResource x:Key="ComboBoxBackground" ResourceKey="ClassicButtonBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="ClassicButtonHoverBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="ClassicButtonPressedBrush" />
+    <SolidColorBrush x:Key="ComboBoxBackgroundDisabled" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#707070" />
+    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#2C628B" />
+    <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#ADB2B5" />
+    <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#646464" />
+    <SolidColorBrush x:Key="ComboBoxDropDownGlyphForeground" Color="#000000" />
+    <Thickness x:Key="ComboBoxDropdownBorderPadding">0</Thickness>
+    <CornerRadius x:Key="OverlayCornerRadius">0</CornerRadius>
+    <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#3399FF" />
+    <SolidColorBrush x:Key="ComboBoxItemForegroundPointerOver" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#CCE8FF" />
+    <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#3399FF" />
+    <SolidColorBrush x:Key="ComboBoxItemForegroundSelectedPointerOver" Color="#FFFFFF" />
+
+    <x:Double x:Key="CheckBoxMinHeight">18</x:Double>
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="#E8F4FC" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="#C4E5F6" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#8E8F8F" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#2C628B" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#E8F4FC" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#C4E5F6" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#8E8F8F" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#2C628B" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedDisabled" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedDisabled" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedDisabled" Color="#B1B1B1" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedDisabled" Color="#B1B1B1" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedDisabled" Color="#9A9A9A" />
+
+    <x:Double x:Key="RadioButtonMinHeight">18</x:Double>
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseFill" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStroke" Color="#8E8F8F" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStrokePointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFill" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" Color="#E8F4FC" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="#8E8F8F" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" Color="#3C7FB1" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="#1F5F9F" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFillPointerOver" Color="#1F5F9F" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphStroke" Color="#1F5F9F" />
+
+    <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#F5F5F5" />
+    <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#979797" />
+    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#D5E7F8" />
+    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="#C1D9F2" />
+    <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundPointerOver" Color="#D5E7F8" />
+    <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundSubMenuOpened" Color="#D5E7F8" />
+
+    <!-- Classic tree: + / − boxes and dotted lines, selection on the label only. -->
+    <ControlTheme x:Key="ClassicTreeExpander" TargetType="ToggleButton">
+      <Setter Property="Width" Value="9" />
+      <Setter Property="Height" Value="9" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="White" BorderBrush="#919191" BorderThickness="1" Width="9" Height="9">
+            <Panel>
+              <Rectangle Fill="Black" Width="5" Height="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <Rectangle x:Name="Vertical" Fill="Black" Width="1" Height="5" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Panel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:checked /template/ Rectangle#Vertical">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="ClassicTreeViewItem" TargetType="TreeViewItem">
+      <Setter Property="Padding" Value="2,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="Black" />
+      <Setter Property="MinHeight" Value="19" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel>
+            <Grid Name="PART_Header" ColumnDefinitions="Auto,*" MinHeight="{TemplateBinding MinHeight}" Background="Transparent">
+              <views:TreeLines Stroke="#A0A0A0" />
+              <Panel Width="19" HorizontalAlignment="Left" Margin="{TemplateBinding Level, Converter={x:Static views:TreeIndentConverter.Instance}}">
+                <ToggleButton Name="PART_ExpandCollapseChevron" Theme="{StaticResource ClassicTreeExpander}" Focusable="False"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}" />
+              </Panel>
+              <Border Name="PART_LayoutRoot" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"
+                      Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                      Padding="{TemplateBinding Padding}" Focusable="True" TemplatedControl.IsTemplateFocusTarget="True">
+                <ContentPresenter Name="PART_HeaderPresenter" Focusable="False"
+                                  Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+              </Border>
+            </Grid>
+            <ItemsPresenter Name="PART_ItemsPresenter" IsVisible="{TemplateBinding IsExpanded}" ItemsPanel="{TemplateBinding ItemsPanel}" />
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^ /template/ Border#PART_LayoutRoot:pointerover">
+        <Setter Property="Background" Value="#E5F3FB" />
+        <Setter Property="BorderBrush" Value="#70C0E7" />
+      </Style>
+      <Style Selector="^:selected /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="#CBE8F6" />
+        <Setter Property="BorderBrush" Value="#26A0DA" />
+      </Style>
+      <Style Selector="^:empty /template/ ToggleButton#PART_ExpandCollapseChevron">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+
+    </ResourceDictionary>
   </Application.Resources>
 
   <Application.Styles>
@@ -108,7 +214,7 @@
             <DockPanel>
               <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource PanelHeaderBrush}">
                 <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,0">
-                  <Image Source="{StaticResource NamespaceIcon}" Width="15" Height="15" VerticalAlignment="Center" />
+                  <Image x:Name="PanelIcon" Source="avares://ServiceBusExplorer/Assets/Tree/Header.png" Width="16" Height="16" VerticalAlignment="Center" />
                   <ContentPresenter Content="{TemplateBinding Header}" Foreground="White" FontWeight="Bold"
                                     FontSize="12.5" VerticalAlignment="Center" />
                 </StackPanel>
@@ -118,6 +224,10 @@
           </Border>
         </ControlTemplate>
       </Setter>
+    </Style>
+
+    <Style Selector="HeaderedContentControl.log /template/ Image#PanelIcon">
+      <Setter Property="Source" Value="avares://ServiceBusExplorer/Assets/Tree/Log.png" />
     </Style>
 
     <!-- Group box with a caption tab on its top edge, like the original's grouper. -->
@@ -140,34 +250,58 @@
     </Style>
 
     <Style Selector="Button">
-      <Setter Property="Background" Value="{StaticResource ButtonBrush}" />
-      <Setter Property="BorderBrush" Value="#8EA9C9" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="MinWidth" Value="75" />
       <Setter Property="MinHeight" Value="23" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
-      <Setter Property="BorderBrush" Value="#3C7FB1" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.small">
       <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="21" />
       <Setter Property="Padding" Value="6,1" />
     </Style>
 
-    <Style Selector="TextBox, NumericUpDown, ComboBox">
+    <Style Selector="TextBox, NumericUpDown">
       <Setter Property="CornerRadius" Value="0" />
       <Setter Property="MinHeight" Value="22" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#7A9CC6" />
     </Style>
     <Style Selector="TextBox">
       <Setter Property="Padding" Value="4,2" />
+    </Style>
+    <!-- Like WinForms text boxes: no spinner buttons. -->
+    <Style Selector="NumericUpDown">
+      <Setter Property="ShowButtonSpinner" Value="False" />
+    </Style>
+
+    <!-- Drop-down list: button-like face with a small arrow box on the right. -->
+    <Style Selector="ComboBox">
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="22" />
+    </Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="MinHeight" Value="20" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- Small square check boxes and radio buttons. -->
+    <Style Selector="CheckBox, RadioButton">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="5,0,0,0" />
+    </Style>
+
+    <Style Selector="MenuFlyoutPresenter, ContextMenu">
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="2" />
+    </Style>
+    <Style Selector="MenuFlyoutPresenter MenuItem, ContextMenu MenuItem">
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="8,2" />
     </Style>
 
     <Style Selector="TabControl">
