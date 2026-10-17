@@ -9,17 +9,18 @@ public class ConnectionEditorViewModelTests
     private readonly FakeConnector _connector = new();
 
     [Fact]
-    public void New_editor_is_invalid_until_named_and_given_a_valid_connection_string()
+    public void Connecting_needs_valid_settings_and_saving_also_a_name()
     {
         var editor = new ConnectionEditorViewModel(_connector);
-        Assert.False(editor.SaveCommand.CanExecute(null));
-
-        editor.Name = "Orders";
-        Assert.False(editor.SaveCommand.CanExecute(null));
+        Assert.False(editor.IsValid);
         Assert.Contains("empty", editor.ValidationError);
 
         editor.ConnectionString = "Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=k;SharedAccessKey=v";
-        Assert.True(editor.SaveCommand.CanExecute(null));
+        Assert.True(editor.IsValid);
+        Assert.False(editor.CanSave);
+
+        editor.Name = "Orders";
+        Assert.True(editor.CanSave);
     }
 
     [Theory]

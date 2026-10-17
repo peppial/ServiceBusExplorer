@@ -18,10 +18,13 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private readonly IDialogService _dialogs;
     private IReceivedBatch? _lockedBatch;
 
-    public MessagesViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, string? sessionId = null)
+    private readonly ILogService? _log;
+
+    public MessagesViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, string? sessionId = null, ILogService? log = null)
     {
         _service = service;
         _dialogs = dialogs;
+        _log = log;
         Entity = entity;
         SessionId = sessionId;
         _selectedSubQueue = SubQueues[0];
@@ -495,6 +498,20 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     {
         Status = string.IsNullOrEmpty(message) ? null : message;
         HasError = isError;
+
+        // Progress text stays in the tab; results go to the Log, prefixed with where they happened.
+        if (!string.IsNullOrEmpty(message) && !message.EndsWith('…') && !message.Contains("so far", StringComparison.Ordinal))
+        {
+            var line = $"{SourceLabel}: {message}";
+            if (isError)
+            {
+                _log?.Error(line);
+            }
+            else
+            {
+                _log?.Info(line);
+            }
+        }
     }
 
     // Holding locks while peeking or receiving again would confuse which rows can be settled.

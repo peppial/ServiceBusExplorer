@@ -10,9 +10,9 @@ namespace SbExplorer.App.Services;
 
 public sealed class DialogService : IDialogService
 {
-    public async Task<bool> ShowConnectionEditorAsync(ConnectionEditorViewModel editor)
+    public async Task<bool> ShowConnectDialogAsync(ConnectDialogViewModel dialog)
     {
-        var window = new ConnectionEditorWindow { DataContext = editor };
+        var window = new ConnectWindow { DataContext = dialog };
         return await window.ShowDialog<bool?>(Owner) == true;
     }
 

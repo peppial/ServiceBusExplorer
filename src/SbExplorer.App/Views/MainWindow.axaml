@@ -4,66 +4,72 @@
         xmlns:views="using:SbExplorer.App.Views"
         x:Class="SbExplorer.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="Service Bus Explorer"
+        Title="{Binding Title}"
         Icon="/Assets/icon.png"
-        Width="1360" Height="820" MinWidth="900" MinHeight="500">
+        Width="1460" Height="920" MinWidth="900" MinHeight="560">
   <DockPanel>
-    <Border DockPanel.Dock="Bottom" Padding="10,6"
-            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
-      <Grid ColumnDefinitions="*,Auto">
-        <TextBlock x:Name="StatusText" Text="{Binding Status}" TextTrimming="CharacterEllipsis"
-                   Classes.error="{Binding HasError}" ToolTip.Tip="{Binding Status}" />
-        <Button Grid.Column="1" Content="Cancel" Padding="8,0" Margin="8,0,0,0"
-                IsVisible="{Binding ConnectCommand.IsRunning}"
-                Command="{Binding ConnectCancelCommand}" />
+    <Menu DockPanel.Dock="Top" x:Name="MainMenu">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Connect" Command="{Binding ConnectCommand}" InputGesture="{OnPlatform Default='Ctrl+N', macOS='Cmd+N'}" />
+        <MenuItem x:Name="SavedConnectionsMenu" Header="_Saved connections" IsEnabled="{Binding HasSavedConnections}" />
+        <MenuItem Header="_Disconnect" Command="{Binding DisconnectCommand}" />
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="Clear Log" Command="{Binding ClearLogCommand}" />
+        <MenuItem Header="Copy Log" Command="{Binding CopyLogCommand}" />
+        <MenuItem Header="Save Log As..." Command="{Binding SaveLogCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Actions" IsEnabled="{Binding IsConnected}">
+        <MenuItem Header="Create Queue" Command="{Binding Explorer.NewQueueCommand, FallbackValue={x:Null}}" />
+        <MenuItem Header="Create Topic" Command="{Binding Explorer.NewTopicCommand, FallbackValue={x:Null}}" />
+        <MenuItem Header="Create Subscription" Command="{Binding Explorer.NewSubscriptionCommand, FallbackValue={x:Null}}" />
+        <MenuItem Header="Add Rule" Command="{Binding Explorer.NewRuleCommand, FallbackValue={x:Null}}" />
+        <Separator />
+        <MenuItem Header="Refresh Entities" Command="{Binding Explorer.RefreshCommand, FallbackValue={x:Null}}" InputGesture="F5" />
+        <MenuItem Header="Export Entities" Command="{Binding Explorer.ExportCommand, FallbackValue={x:Null}}" />
+        <MenuItem Header="Import Entities" Command="{Binding Explorer.ImportCommand, FallbackValue={x:Null}}" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Set Default Layout" Click="OnSetDefaultLayout" />
+        <MenuItem Header="_Log Window" ToggleType="CheckBox" IsChecked="{Binding IsLogVisible}" Command="{Binding ToggleLogCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="_About Service Bus Explorer" Command="{Binding AboutCommand}" />
+      </MenuItem>
+    </Menu>
+
+    <Grid x:Name="Layout" RowDefinitions="*,5,190" Margin="6,2,6,6">
+      <Grid ColumnDefinitions="380,5,*">
+        <HeaderedContentControl Classes="panel" Header="Service Bus Namespace">
+          <Panel>
+            <views:EntityTreeView x:Name="TreePanel" DataContext="{Binding Explorer}" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsConnected}" />
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8"
+                        IsVisible="{Binding !IsConnected}">
+              <TextBlock Text="Not connected." HorizontalAlignment="Center" Opacity="0.7" />
+              <Button Content="Connect..." Command="{Binding ConnectCommand}" HorizontalAlignment="Center" IsEnabled="{Binding !IsConnecting}" />
+              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConnecting}" HorizontalAlignment="Center">
+                <TextBlock Text="Connecting…" VerticalAlignment="Center" />
+                <Button Content="Cancel" Classes="small" Command="{Binding CancelConnectCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Panel>
+        </HeaderedContentControl>
+
+        <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+        <HeaderedContentControl Grid.Column="2" Classes="panel" x:Name="DetailsPanel"
+                                Header="{Binding Explorer.DetailsTitle, FallbackValue='Service Bus Explorer'}">
+          <views:EntityDetailsView DataContext="{Binding Explorer}" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsConnected}" />
+        </HeaderedContentControl>
       </Grid>
-    </Border>
-    <Grid ColumnDefinitions="260,4,*">
-      <DockPanel Grid.Column="0" Margin="10">
-        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-          <TextBlock Text="Connections" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Button Grid.Column="1" Content="+ Add" Command="{Binding AddCommand}"
-                  ToolTip.Tip="Add a connection" />
-        </Grid>
-        <TextBlock DockPanel.Dock="Top" IsVisible="{Binding SecretsAreInsecure}" TextWrapping="Wrap"
-                   Margin="0,0,0,8" FontSize="12" Opacity="0.8"
-                   Text="No system keychain found. Connection strings are stored encrypted with a local key file." />
-        <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" ItemSpacing="6" LineSpacing="6">
-          <Button Content="Connect" Command="{Binding ConnectCommand}" Classes="accent" />
-          <Button Content="Disconnect" Command="{Binding DisconnectCommand}" />
-          <Button Content="Edit" Command="{Binding EditCommand}" />
-          <Button Content="Delete" Command="{Binding DeleteCommand}" />
-        </WrapPanel>
-        <Panel>
-          <ListBox x:Name="ConnectionList" ItemsSource="{Binding Connections}"
-                   SelectedItem="{Binding SelectedConnection}" DoubleTapped="OnConnectionDoubleTapped">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:ConnectionItemViewModel">
-                <Grid ColumnDefinitions="Auto,*">
-                  <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                           Fill="#2EA043" IsVisible="{Binding IsConnected}" />
-                  <StackPanel Grid.Column="1">
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Host}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding AuthLabel}" FontSize="11" Opacity="0.55" />
-                  </StackPanel>
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-          <TextBlock Text="No saved connections yet. Click + Add." Opacity="0.6" TextWrapping="Wrap"
-                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                     IsVisible="{Binding !Connections.Count}" />
-        </Panel>
-      </DockPanel>
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
-      <Panel Grid.Column="2" Margin="10">
-        <TextBlock Text="Connect to a namespace to get started." Opacity="0.7"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                   IsVisible="{Binding !IsConnected}" />
-        <views:ExplorerView x:Name="Explorer" DataContext="{Binding Explorer}"
-                            IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsConnected, FallbackValue=False}" />
-      </Panel>
+
+      <GridSplitter Grid.Row="1" ResizeDirection="Rows" Background="Transparent" IsVisible="{Binding IsLogVisible}" />
+
+      <HeaderedContentControl Grid.Row="2" Classes="panel" Header="Log" IsVisible="{Binding IsLogVisible}">
+        <views:LogView x:Name="LogPanel" />
+      </HeaderedContentControl>
     </Grid>
   </DockPanel>
 </Window>

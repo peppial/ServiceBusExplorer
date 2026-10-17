@@ -4,29 +4,25 @@ using SbExplorer.App.ViewModels;
 
 namespace SbExplorer.App.Views;
 
-public partial class ConnectionEditorWindow : Window
+public partial class ConnectWindow : Window
 {
-    public ConnectionEditorWindow()
-    {
-        InitializeComponent();
-        Opened += (_, _) => this.FindControl<TextBox>("NameBox")?.Focus();
-    }
+    public ConnectWindow() => InitializeComponent();
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (DataContext is ConnectionEditorViewModel editor)
+        if (DataContext is ConnectDialogViewModel dialog)
         {
-            editor.Saved += (_, _) => Close(true);
+            dialog.Confirmed += (_, _) => Close(true);
         }
     }
 
     protected override void OnClosed(EventArgs e)
     {
         // Don't leave a sign-in or network call running behind a closed dialog.
-        if (DataContext is ConnectionEditorViewModel { TestCommand.IsRunning: true } editor)
+        if (DataContext is ConnectDialogViewModel { Editor.TestCommand.IsRunning: true } dialog)
         {
-            editor.TestCommand.Cancel();
+            dialog.Editor.TestCommand.Cancel();
         }
 
         base.OnClosed(e);

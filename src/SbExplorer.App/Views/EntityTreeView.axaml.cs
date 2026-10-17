@@ -2,9 +2,9 @@ using Avalonia.Controls;
 
 namespace SbExplorer.App.Views;
 
-public partial class ExplorerView : UserControl
+public partial class EntityTreeView : UserControl
 {
-    public ExplorerView() => InitializeComponent();
+    public EntityTreeView() => InitializeComponent();
 
     public void FocusFilter()
     {

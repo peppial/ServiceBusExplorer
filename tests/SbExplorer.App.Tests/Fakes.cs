@@ -65,8 +65,11 @@ internal sealed class FakeConnector : INamespaceConnector
     public string? ScopedEntity { get; set; }
     public List<FakeSession> Sessions { get; } = [];
 
+    public List<(ConnectionProfile Profile, string? Secret)> Requests { get; } = [];
+
     public Task<INamespaceSession> ConnectAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken = default)
     {
+        Requests.Add((profile, secret));
         if (Failure is not null)
         {
             return Task.FromException<INamespaceSession>(Failure);
@@ -104,8 +107,8 @@ internal sealed class FakeSession(ConnectionProfile profile, string host, FakeEn
 
 internal sealed class FakeDialogs : IDialogService
 {
-    /// <summary>Fills in the editor and returns whether to "save".</summary>
-    public Func<ConnectionEditorViewModel, bool> OnEditor { get; set; } = _ => false;
+    /// <summary>Drives the connect dialog and returns whether the user chose OK.</summary>
+    public Func<ConnectDialogViewModel, Task<bool>> OnConnectDialog { get; set; } = _ => Task.FromResult(false);
 
     /// <summary>Receives the send dialog; by default sends whatever it was prefilled with.</summary>
     public Func<SendMessageViewModel, Task<bool>> OnSend { get; set; } = async sender =>
@@ -121,7 +124,7 @@ internal sealed class FakeDialogs : IDialogService
     public List<(string Name, byte[] Content)> SavedFiles { get; } = [];
     public SendMessageViewModel? LastSendDialog { get; private set; }
 
-    public Task<bool> ShowConnectionEditorAsync(ConnectionEditorViewModel editor) => Task.FromResult(OnEditor(editor));
+    public Task<bool> ShowConnectDialogAsync(ConnectDialogViewModel dialog) => OnConnectDialog(dialog);
 
     public Task<bool> ShowSendMessageAsync(SendMessageViewModel sender)
     {

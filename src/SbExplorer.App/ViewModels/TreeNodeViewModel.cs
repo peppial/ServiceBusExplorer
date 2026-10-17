@@ -14,6 +14,12 @@ public abstract partial class TreeNodeViewModel : ObservableObject
     public ObservableCollection<TreeNodeViewModel> Children { get; } = [];
 
     public virtual EntityInfo? Entity => null;
+
+    /// <summary>The text shown in the tree, e.g. <c>orders (16, 3)</c>.</summary>
+    public virtual string DisplayName => Name;
+
+    /// <summary>Key of the icon resource: Namespace, Queue, Topic, Subscription or Rule.</summary>
+    public virtual string? IconKey => null;
     public virtual string? ActiveBadge => null;
     public virtual string? DeadLetterBadge => null;
     public bool HasDeadLetters => DeadLetterBadge is not null;
@@ -47,10 +53,13 @@ public abstract partial class TreeNodeViewModel : ObservableObject
     }
 }
 
-public sealed class FolderNodeViewModel(string title, EntityKind kind) : TreeNodeViewModel
+public sealed class FolderNodeViewModel(string title, EntityKind kind, string? iconKey = null) : TreeNodeViewModel
 {
     public EntityKind Kind { get; } = kind;
-    public override string Name => $"{title} ({Children.Count})";
+    public string Title { get; } = title;
+    public override string Name => $"{Title} ({Children.Count})";
+    public override string DisplayName => Title;
+    public override string? IconKey => iconKey ?? Kind.ToString();
     public override string Glyph => "▤";
 
     public void SetChildren(IEnumerable<TreeNodeViewModel> children)
@@ -63,6 +72,25 @@ public sealed class FolderNodeViewModel(string title, EntityKind kind) : TreeNod
 
         OnPropertyChanged(nameof(Name));
     }
+}
+
+/// <summary>The tree's root: the namespace URI, holding the Queues and Topics folders.</summary>
+public sealed class NamespaceNodeViewModel : TreeNodeViewModel
+{
+    public NamespaceNodeViewModel(string host, IEnumerable<TreeNodeViewModel> folders)
+    {
+        Name = $"sb://{host}/";
+        foreach (var folder in folders)
+        {
+            Children.Add(folder);
+        }
+
+        IsExpanded = true;
+    }
+
+    public override string Name { get; }
+    public override string Glyph => string.Empty;
+    public override string IconKey => "Namespace";
 }
 
 /// <summary>Shown under a not-yet-loaded node so the expander appears, and to report load errors.</summary>
@@ -90,6 +118,12 @@ public partial class EntityNodeViewModel : TreeNodeViewModel
 
     public override EntityInfo Entity { get; }
     public override string Name => Entity.Name;
+    public override string IconKey => Entity.Kind.ToString();
+
+    /// <summary>Queues and subscriptions show (active, dead-lettered) like the original explorer.</summary>
+    public override string DisplayName => Entity.Counts is { } counts
+        ? $"{Entity.Name} ({DisplayFormat.Count(counts.Active)}, {DisplayFormat.Count(counts.DeadLetter)})"
+        : Entity.Name;
     public bool IsLoaded { get; private set; }
 
     public override string Glyph => Entity.Kind switch

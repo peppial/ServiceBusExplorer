@@ -15,14 +15,18 @@ public partial class ExplorerViewModel(
     INamespaceSession session,
     IDialogService dialogs,
     TimeProvider? clock = null,
-    Func<IReadOnlyList<string>, Task>? savePinnedEntities = null)
+    Func<IReadOnlyList<string>, Task>? savePinnedEntities = null,
+    ILogService? log = null)
     : ObservableObject, IAsyncDisposable
 {
+    public ILogService? Log => log;
+
     private readonly List<string> _pinned = [.. session.Profile.PinnedEntities];
     private readonly NamespaceTransfer _transfer = new(session.Entities);
     private readonly HashSet<string> _expandAfterRefresh = [];
     private string? _selectAfterRefresh;
-    private readonly FolderNodeViewModel _pinnedFolder = new("Entities", EntityKind.Queue);
+    private readonly FolderNodeViewModel _pinnedFolder = new("Entities", EntityKind.Queue, iconKey: "Namespace");
+    private NamespaceNodeViewModel? _treeRoot;
 
     // Kept per entity so peeked or locked messages survive clicking elsewhere in the tree.
     private readonly Dictionary<string, MessagesViewModel> _messageTabs = [];
@@ -37,6 +41,20 @@ public partial class ExplorerViewModel(
 
     public IReadOnlyList<FolderNodeViewModel> Roots => session.CanManage ? [_queues, _topics] : [_pinnedFolder];
 
+    /// <summary>What the tree shows: the namespace URI with the folders under it.</summary>
+    public IReadOnlyList<TreeNodeViewModel> TreeRoots => [_treeRoot ??= new NamespaceNodeViewModel(session.FullyQualifiedNamespace, Roots)];
+
+    public string NamespaceUri => $"sb://{session.FullyQualifiedNamespace}/";
+
+    /// <summary>The right panel's header, e.g. "View Queue: orders".</summary>
+    public string DetailsTitle => SelectedNode switch
+    {
+        EntityNodeViewModel { Entity: var e } => $"View {e.Kind}: {e.Name}",
+        FolderNodeViewModel folder => folder.Title,
+        NamespaceNodeViewModel => $"Service Bus Namespace: {NamespaceUri}",
+        _ => "Service Bus Explorer",
+    };
+
     /// <summary>Without the Manage claim, entities can't be listed and are added by name instead.</summary>
     public bool IsLimited => !session.CanManage;
 
@@ -46,7 +64,7 @@ public partial class ExplorerViewModel(
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedEntity), nameof(PropertyGroups), nameof(HasSelection), nameof(Messages), nameof(HasMessages),
-        nameof(Sessions), nameof(HasSessions))]
+        nameof(Sessions), nameof(HasSessions), nameof(DetailsTitle))]
     private TreeNodeViewModel? _selectedNode;
 
     [ObservableProperty]
@@ -76,7 +94,7 @@ public partial class ExplorerViewModel(
             if (!_messageTabs.TryGetValue(entity.Path, out var tab) || tab.Entity != entity && !tab.HasLockedMessages)
             {
                 // Rebuild on fresh entity data, unless the old tab still holds locks the user must settle.
-                tab = new MessagesViewModel(session.Messages, dialogs, entity);
+                tab = new MessagesViewModel(session.Messages, dialogs, entity, log: log);
                 _messageTabs[entity.Path] = tab;
             }
 
@@ -98,7 +116,7 @@ public partial class ExplorerViewModel(
 
             if (!_sessionTabs.TryGetValue(entity.Path, out var tab))
             {
-                tab = new SessionsViewModel(session.Messages, dialogs, entity);
+                tab = new SessionsViewModel(session.Messages, dialogs, entity, log);
                 _sessionTabs[entity.Path] = tab;
             }
 
@@ -169,15 +187,16 @@ public partial class ExplorerViewModel(
             var now = _clock.GetLocalNow().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
             LoadStatus = $"{Plural(_queues.Children.Count, "queue")}, {Plural(_topics.Children.Count, "topic")} · refreshed {now}"
                 + (session.IsEmulator ? " · the emulator doesn't report message counts" : string.Empty);
+            log?.Info($"Retrieved {Plural(_queues.Children.Count, "queue")} and {Plural(_topics.Children.Count, "topic")} from sb://{session.FullyQualifiedNamespace}/."
+                + (session.IsEmulator ? " The emulator doesn't report most message counts." : string.Empty));
         }
         catch (OperationCanceledException)
         {
-            LoadStatus = "Refresh cancelled";
+            Report("Refresh cancelled.");
         }
         catch (Exception ex)
         {
-            LoadStatus = $"Could not load entities: {ErrorMessages.Describe(ex)}";
-            HasError = true;
+            Report($"Could not load entities: {ErrorMessages.Describe(ex)}", isError: true);
         }
     }
 
@@ -194,8 +213,7 @@ public partial class ExplorerViewModel(
 
         if (!EntityReference.TryParse(text, out var entity, out var error))
         {
-            LoadStatus = error;
-            HasError = true;
+            Report(error!, isError: true);
             return;
         }
 
@@ -299,7 +317,7 @@ public partial class ExplorerViewModel(
             _sessionTabs.Remove(entity.Path);
             SelectedNode = null;
             await RefreshCommand.ExecuteAsync(null);
-            LoadStatus = $"Deleted {kind} {entity.Path}.";
+            Report($"The {kind} {entity.Path} has been successfully deleted.");
         }
         catch (Exception ex)
         {
@@ -315,7 +333,7 @@ public partial class ExplorerViewModel(
         {
             await _entities.SetStatusAsync(entity, status);
             await ReloadAndSelectAsync(entity.Path);
-            LoadStatus = $"{entity.Path} is now {status}.";
+            Report($"The status of {entity.Path} has been set to {status}.");
         }
         catch (Exception ex)
         {
@@ -346,9 +364,9 @@ public partial class ExplorerViewModel(
             var definition = await _transfer.ExportAsync(session.FullyQualifiedNamespace, only);
             var name = only is null ? session.FullyQualifiedNamespace.Split('.')[0] : only.First().Name;
             var json = System.Text.Encoding.UTF8.GetBytes(NamespaceTransfer.Serialize(definition));
-            LoadStatus = await dialogs.SaveFileAsync($"{name}-entities.json", json)
+            Report(await dialogs.SaveFileAsync($"{name}-entities.json", json)
                 ? $"Exported {Plural(definition.EntityCount, "entity definition", "entity definitions")}."
-                : "Export cancelled.";
+                : "Export cancelled.");
         }
         catch (Exception ex)
         {
@@ -390,8 +408,12 @@ public partial class ExplorerViewModel(
 
         var summary = string.Join(", ", results.GroupBy(r => r.Outcome).Select(g => $"{g.Count()} {g.Key.ToString().ToLowerInvariant()}"));
         var failures = results.Where(r => r.Outcome == ImportOutcome.Failed).ToList();
-        LoadStatus = $"Import finished: {summary}.";
-        HasError = failures.Count > 0;
+        Report($"Import finished: {summary}.", isError: failures.Count > 0);
+        foreach (var failure in failures)
+        {
+            log?.Error($"Could not import {failure.Path}: {failure.Error}");
+        }
+
         if (failures.Count > 0)
         {
             await dialogs.ChooseAsync("Import finished with errors",
@@ -404,7 +426,7 @@ public partial class ExplorerViewModel(
         if (await dialogs.ShowEntityEditorAsync(editor) && editor.SavedPath is { } path)
         {
             await ReloadAndSelectAsync(path);
-            LoadStatus = $"{(editor.IsNew ? "Created" : "Saved")} {path}.";
+            Report($"The {editor.Kind.ToString().ToLowerInvariant()} {path} has been successfully {(editor.IsNew ? "created" : "updated")}.");
         }
     }
 
@@ -426,10 +448,24 @@ public partial class ExplorerViewModel(
         await RefreshCommand.ExecuteAsync(null);
     }
 
+    /// <summary>Shows a result in the tree panel's status and writes it to the Log.</summary>
+    private void Report(string message, bool isError = false)
+    {
+        HasError = isError;
+        LoadStatus = message;
+        if (isError)
+        {
+            log?.Error(message);
+        }
+        else
+        {
+            log?.Info(message);
+        }
+    }
+
     private void ReportError(string message)
     {
-        LoadStatus = message;
-        HasError = true;
+        Report(message, isError: true);
     }
 
     private string? SelectedTopic => SelectedEntity switch

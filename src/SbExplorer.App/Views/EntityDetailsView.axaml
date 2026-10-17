@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             xmlns:mgmt="using:SbExplorer.Core.Management"
+             xmlns:views="using:SbExplorer.App.Views"
+             x:Class="SbExplorer.App.Views.EntityDetailsView"
+             x:DataType="vm:ExplorerViewModel">
+  <Panel Margin="8">
+    <TextBlock Text="Select a queue, topic, subscription or rule in the tree." Opacity="0.6"
+               HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasSelection}" />
+    <TabControl x:Name="DetailTabs" IsVisible="{Binding HasSelection}">
+      <TabItem Header="Description">
+        <Border Classes="white" Padding="8">
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding PropertyGroups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PropertyGroupViewModel">
+                  <HeaderedContentControl Classes="group" Header="{Binding Name}">
+                    <ItemsControl ItemsSource="{Binding Items}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="mgmt:EntityProperty">
+                          <Grid ColumnDefinitions="220,*" Margin="0,1">
+                            <TextBlock Text="{Binding Name}" />
+                            <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </HeaderedContentControl>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+      </TabItem>
+      <TabItem Header="Messages" IsVisible="{Binding HasMessages}">
+        <views:MessagesView DataContext="{Binding Messages}" Margin="0,6,0,0" />
+      </TabItem>
+      <TabItem Header="Sessions" IsVisible="{Binding HasSessions}">
+        <views:SessionsView DataContext="{Binding Sessions}" Margin="0,6,0,0" />
+      </TabItem>
+    </TabControl>
+  </Panel>
+</UserControl>

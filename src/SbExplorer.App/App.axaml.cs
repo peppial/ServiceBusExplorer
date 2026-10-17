@@ -28,6 +28,7 @@ public partial class App : Application
             desktop.MainWindow = new MainWindow { DataContext = viewModel };
             desktop.ShutdownRequested += async (_, _) => await viewModel.DisconnectCommand.ExecuteAsync(null);
             viewModel.LoadCommand.Execute(null);
+            Services.GetRequiredService<ILogService>().Info("Service Bus Explorer started. Use File > Connect to open a namespace.");
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -42,6 +43,7 @@ public partial class App : Application
             new JsonConnectionStore(AppPaths.ConnectionsFile, sp.GetRequiredService<ISecretStore>()));
         services.AddSingleton<INamespaceConnector, AzureNamespaceConnector>();
         services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<ILogService, LogService>();
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();
     }

@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SbExplorer.App.ViewModels"
+             xmlns:views="using:SbExplorer.App.Views"
+             x:Class="SbExplorer.App.Views.EntityTreeView"
+             x:DataType="vm:ExplorerViewModel">
+  <DockPanel Margin="4">
+    <Border DockPanel.Dock="Top" Classes="notice" IsVisible="{Binding IsLimited}">
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding LimitedNotice}" TextWrapping="Wrap" FontSize="11" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="Add Entity…" Command="{Binding AddEntityCommand}" />
+          <Button Content="Remove" Command="{Binding RemoveEntityCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+    <TextBox x:Name="FilterBox" DockPanel.Dock="Top" Margin="0,0,0,4"
+             Text="{Binding Filter}" PlaceholderText="Filter queues/topics..." />
+    <ProgressBar DockPanel.Dock="Top" IsIndeterminate="True" Height="2" MinHeight="2"
+                 IsVisible="{Binding RefreshCommand.IsRunning}" />
+    <Border Classes="white">
+      <TreeView x:Name="EntityTree" ItemsSource="{Binding TreeRoots}" SelectedItem="{Binding SelectedNode}"
+                Background="White">
+        <TreeView.Styles>
+          <Style Selector="TreeViewItem" x:DataType="vm:TreeNodeViewModel">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+          </Style>
+        </TreeView.Styles>
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate x:DataType="vm:TreeNodeViewModel" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Spacing="5" Background="Transparent"
+                        Opacity="{Binding IsDimmed, Converter={x:Static vm:Converters.DimmedOpacity}}">
+              <Image Width="16" Height="16" VerticalAlignment="Center"
+                     Source="{Binding IconKey, Converter={x:Static views:IconConverter.Instance}}"
+                     IsVisible="{Binding IconKey, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </StackPanel>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Border>
+  </DockPanel>
+</UserControl>

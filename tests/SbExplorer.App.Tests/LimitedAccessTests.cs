@@ -103,19 +103,19 @@ public class LimitedAccessTests
     {
         var secrets = new FakeSecretStore();
         var store = new FakeConnectionStore(secrets);
-        await store.SaveAsync(new ConnectionProfile { Name = "Listen only" },
-            "Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=listen;SharedAccessKey=v", TestContext.Current.CancellationToken);
+        var profile = new ConnectionProfile { Name = "Listen only" };
+        await store.SaveAsync(profile, "Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=listen;SharedAccessKey=v", TestContext.Current.CancellationToken);
         var dialogs = new FakeDialogs { PromptResult = "orders" };
-        var vm = new MainWindowViewModel(store, secrets, new FakeConnector { CanManage = false }, dialogs);
+        var log = new SbExplorer.App.Services.LogService();
+        var vm = new MainWindowViewModel(store, secrets, new FakeConnector { CanManage = false }, dialogs, log);
         await vm.LoadCommand.ExecuteAsync(null);
-        vm.SelectedConnection = vm.Connections[0];
 
-        await vm.ConnectCommand.ExecuteAsync(null);
+        await vm.ConnectSavedCommand.ExecuteAsync(profile);
         await vm.Explorer!.AddEntityCommand.ExecuteAsync(null);
 
-        Assert.Contains("without management access", vm.Status);
+        Assert.Contains(log.Entries, e => e.Message.Contains("without management access"));
         Assert.Equal(["orders"], store.Profiles.Single().PinnedEntities);
-        Assert.Equal(["orders"], vm.Connections[0].Profile.PinnedEntities);
+        Assert.Equal(["orders"], vm.SavedConnections.Single().PinnedEntities);
     }
 
     [Fact]

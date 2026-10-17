@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SbExplorer.App.ViewModels"
+        xmlns:conn="using:SbExplorer.Core.Connections"
+        x:Class="SbExplorer.App.Views.ConnectWindow"
+        x:DataType="vm:ConnectDialogViewModel"
+        Title="Connect to a Service Bus Namespace"
+        Width="820" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="14">
+    <Grid ColumnDefinitions="*,14,*">
+      <StackPanel>
+        <HeaderedContentControl Classes="group" Header="Service Bus Namespaces">
+          <StackPanel Spacing="6">
+            <ComboBox x:Name="ProfilesBox" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                      PlaceholderText="Select a service bus namespace..." HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="conn:ConnectionProfile">
+                  <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button Content="New" Command="{Binding NewCommand}" />
+              <Button Content="Save" Command="{Binding SaveCommand}" ToolTip.Tip="Save these settings under the name below" />
+              <Button Content="Delete" Command="{Binding DeleteCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </HeaderedContentControl>
+        <HeaderedContentControl Classes="group" Header="Saved Connection">
+          <StackPanel>
+            <TextBlock Classes="label" Text="Name:" />
+            <TextBox x:Name="NameBox" Text="{Binding Editor.Name}" PlaceholderText="Needed only to save the connection" />
+            <TextBlock Classes="hint" TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="{Binding SecretsAreInsecure}"
+                       Text="No system keychain found. Saved connection strings are encrypted with a local key file." />
+          </StackPanel>
+        </HeaderedContentControl>
+      </StackPanel>
+
+      <HeaderedContentControl Grid.Column="2" Classes="group" Header="Connection Settings">
+        <StackPanel>
+          <TextBlock Classes="label" Text="Authentication:" />
+          <ComboBox x:Name="AuthBox" ItemsSource="{Binding Editor.AuthOptions}" SelectedIndex="{Binding Editor.AuthIndex}"
+                    HorizontalAlignment="Stretch" />
+
+          <StackPanel IsVisible="{Binding Editor.UseConnectionString}">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,1">
+              <TextBlock Text="Connection String:" VerticalAlignment="Bottom" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <CheckBox Content="Show" IsChecked="{Binding Editor.RevealConnectionString}" />
+                <Button Classes="small" Content="Local emulator" Command="{Binding Editor.UseEmulatorCommand}" />
+              </StackPanel>
+            </Grid>
+            <TextBox x:Name="ConnectionStringBox" Text="{Binding Editor.ConnectionString}" PasswordChar="●"
+                     RevealPassword="{Binding Editor.RevealConnectionString}" TextWrapping="Wrap"
+                     PlaceholderText="Endpoint=sb://…;SharedAccessKeyName=…;SharedAccessKey=…" />
+          </StackPanel>
+
+          <StackPanel IsVisible="{Binding Editor.UseEntra}">
+            <TextBlock Classes="label" Text="URI or Server FQDN:" />
+            <TextBox Text="{Binding Editor.Namespace}" PlaceholderText="contoso.servicebus.windows.net" />
+            <TextBlock Classes="label" Text="Sign in with:" />
+            <ComboBox ItemsSource="{Binding Editor.CredentialOptions}" SelectedItem="{Binding Editor.SelectedCredential}"
+                      HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:CredentialOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Classes="label" Text="Tenant ID:" />
+            <TextBox Text="{Binding Editor.TenantId}" PlaceholderText="Leave empty for your home tenant" />
+          </StackPanel>
+
+          <TextBlock Text="{Binding Editor.ValidationError}" Classes="hint" TextWrapping="Wrap" Margin="0,6,0,0"
+                     IsVisible="{Binding !Editor.IsValid}" />
+          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+            <Button Content="Test Connection" Command="{Binding Editor.TestCommand}" />
+            <Button Content="Cancel Test" Command="{Binding Editor.TestCancelCommand}" IsVisible="{Binding Editor.TestCommand.IsRunning}" />
+          </StackPanel>
+          <TextBlock Text="{Binding Editor.TestResult}" TextWrapping="Wrap" Margin="0,4,0,0"
+                     Classes.success="{Binding Editor.TestSucceeded}"
+                     IsVisible="{Binding Editor.TestResult, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </HeaderedContentControl>
+    </Grid>
+
+    <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+      <TextBlock Text="{Binding Status}" Classes.error="{Binding HasError}" TextWrapping="Wrap" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+        <Button Content="OK" IsDefault="True" Command="{Binding OkCommand}" />
+        <Button Content="Cancel" IsCancel="True" Click="OnCancel" />
+      </StackPanel>
+    </Grid>
+  </StackPanel>
+</Window>

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SbExplorer.App.Services;
@@ -10,18 +11,18 @@ public partial class MainWindowViewModel(
     IConnectionStore store,
     ISecretStore secrets,
     INamespaceConnector connector,
-    IDialogService dialogs) : ObservableObject
+    IDialogService dialogs,
+    ILogService log) : ObservableObject
 {
-    public ObservableCollection<ConnectionItemViewModel> Connections { get; } = [];
+    private bool _isSavedConnection;
 
-    public bool SecretsAreInsecure => !secrets.IsSecure;
+    /// <summary>Saved connections, for File &gt; Saved connections.</summary>
+    public ObservableCollection<ConnectionProfile> SavedConnections { get; } = [];
+
+    public ILogService Log => log;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DeleteCommand), nameof(ConnectCommand))]
-    private ConnectionItemViewModel? _selectedConnection;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsConnected))]
+    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(Title))]
     [NotifyCanExecuteChangedFor(nameof(DisconnectCommand))]
     private INamespaceSession? _session;
 
@@ -29,115 +30,78 @@ public partial class MainWindowViewModel(
     private ExplorerViewModel? _explorer;
 
     [ObservableProperty]
-    private string _status = "Not connected";
+    private bool _isConnecting;
 
     [ObservableProperty]
-    private bool _hasError;
+    private bool _isLogVisible = true;
 
     public bool IsConnected => Session is not null;
+    public bool HasSavedConnections => SavedConnections.Count > 0;
+
+    public string Title => Session is null ? "Service Bus Explorer" : $"{Session.FullyQualifiedNamespace} - Service Bus Explorer";
 
     [RelayCommand]
     private async Task LoadAsync()
     {
         try
         {
-            Connections.Clear();
+            SavedConnections.Clear();
             foreach (var profile in await store.LoadAsync())
             {
-                Connections.Add(new ConnectionItemViewModel(profile, profile.FullyQualifiedNamespace));
+                SavedConnections.Add(profile);
             }
+
+            OnPropertyChanged(nameof(HasSavedConnections));
         }
         catch (Exception ex)
         {
-            SetStatus($"Could not load saved connections: {ErrorMessages.Describe(ex)}", isError: true);
+            log.Error($"Could not load saved connections: {ErrorMessages.Describe(ex)}");
         }
     }
 
+    /// <summary>File &gt; Connect: the connect dialog, opened on the current connection when there is one.</summary>
     [RelayCommand]
-    private async Task AddAsync()
+    private async Task ConnectAsync()
     {
-        var editor = new ConnectionEditorViewModel(connector);
-        if (!await dialogs.ShowConnectionEditorAsync(editor))
+        var dialog = new ConnectDialogViewModel(store, secrets, connector, dialogs, SavedConnections);
+        if (Session is { } current && SavedConnections.Any(p => p.Id == current.Profile.Id))
         {
-            return;
+            await dialog.SelectAsync(current.Profile);
         }
 
-        var profile = editor.ToProfile();
-        await store.SaveAsync(profile, editor.Secret);
-        var item = new ConnectionItemViewModel(profile, profile.FullyQualifiedNamespace);
-        Connections.Add(item);
-        SelectedConnection = item;
+        var confirmed = await dialogs.ShowConnectDialogAsync(dialog);
+        await LoadAsync();
+        if (confirmed && dialog.Result is { } request)
+        {
+            await ConnectToAsync(request.Profile, request.Secret, request.IsSaved);
+        }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task EditAsync()
+    /// <summary>File &gt; Saved connections &gt; name.</summary>
+    [RelayCommand]
+    private async Task ConnectSavedAsync(ConnectionProfile profile)
     {
-        var item = SelectedConnection!;
-        var editor = new ConnectionEditorViewModel(connector, item.Profile, await store.GetSecretAsync(item.Profile));
-        if (!await dialogs.ShowConnectionEditorAsync(editor))
+        string? secret = null;
+        if (profile.Auth == AuthKind.ConnectionString)
         {
-            return;
-        }
-
-        item.Profile = editor.ToProfile();
-        await store.SaveAsync(item.Profile, editor.Secret);
-        item.Host = item.Profile.FullyQualifiedNamespace;
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task DeleteAsync()
-    {
-        var item = SelectedConnection!;
-        if (!await dialogs.ConfirmAsync("Delete connection", $"Delete the saved connection \"{item.Name}\"? This only removes it from this app.", "Delete"))
-        {
-            return;
-        }
-
-        if (item.IsConnected)
-        {
-            await DisconnectAsync();
-        }
-
-        await store.DeleteAsync(item.Profile.Id);
-        Connections.Remove(item);
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelection), IncludeCancelCommand = true)]
-    private async Task ConnectAsync(CancellationToken cancellationToken)
-    {
-        var item = SelectedConnection!;
-        if (Session is not null)
-        {
-            await DisconnectAsync();
-        }
-
-        SetStatus($"Connecting to {item.Name}…");
-        try
-        {
-            var secret = await store.GetSecretAsync(item.Profile, cancellationToken);
-            if (item.Profile.Auth == AuthKind.ConnectionString && secret is null)
+            try
             {
-                SetStatus($"No connection string is stored for \"{item.Name}\". Edit the connection to add it.", isError: true);
+                secret = await store.GetSecretAsync(profile);
+            }
+            catch (Exception ex)
+            {
+                log.Error($"Could not read the connection string of \"{profile.Name}\": {ErrorMessages.Describe(ex)}");
                 return;
             }
 
-            Session = await connector.ConnectAsync(item.Profile, secret, cancellationToken);
-            item.IsConnected = true;
-            await RememberHostAsync(item, Session.FullyQualifiedNamespace);
-            SetStatus(Session.CanManage
-                ? $"Connected to {Session.FullyQualifiedNamespace}"
-                : $"Connected to {Session.FullyQualifiedNamespace} without management access (the credential has no Manage claim)");
-            Explorer = new ExplorerViewModel(Session, dialogs, savePinnedEntities: pinned => SavePinnedAsync(item, pinned));
-            await Explorer.RefreshCommand.ExecuteAsync(null);
+            if (secret is null)
+            {
+                log.Error($"No connection string is stored for \"{profile.Name}\". Use File > Connect to enter it.");
+                return;
+            }
         }
-        catch (OperationCanceledException)
-        {
-            SetStatus("Connect cancelled");
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Could not connect to {item.Name}: {ErrorMessages.Describe(ex)}", isError: true);
-        }
+
+        await ConnectToAsync(profile, secret, isSaved: true);
     }
 
     [RelayCommand(CanExecute = nameof(IsConnected))]
@@ -157,39 +121,104 @@ public partial class MainWindowViewModel(
         }
 
         Session = null;
-        foreach (var item in Connections.Where(c => c.Profile.Id == session.Profile.Id))
-        {
-            item.IsConnected = false;
-        }
-
         await session.DisposeAsync();
-        SetStatus("Not connected");
+        log.Info($"Disconnected from {session.FullyQualifiedNamespace}.");
     }
 
-    private bool HasSelection() => SelectedConnection is not null;
+    [RelayCommand]
+    private void ClearLog() => log.Clear();
 
-    // Profiles saved before the host was stored show it after their first successful connect.
-    private async Task RememberHostAsync(ConnectionItemViewModel item, string host)
+    [RelayCommand]
+    private Task CopyLogAsync() => dialogs.CopyTextAsync(LogText(log.Entries));
+
+    [RelayCommand]
+    private async Task SaveLogAsync()
     {
-        if (item.Profile.FullyQualifiedNamespace is not null)
+        if (await dialogs.SaveFileAsync("ServiceBusExplorer.log", Encoding.UTF8.GetBytes(LogText(log.Entries))))
+        {
+            log.Info("The log has been saved.");
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleLog() => IsLogVisible = !IsLogVisible;
+
+    [RelayCommand]
+    private Task AboutAsync() => dialogs.ChooseAsync(
+        "About Service Bus Explorer",
+        $"Service Bus Explorer {typeof(MainWindowViewModel).Assembly.GetName().Version?.ToString(3)}\n\n"
+        + "A cross-platform rewrite on .NET 10 and Avalonia of the Service Bus Explorer for Windows "
+        + "(github.com/paolosalvatori/ServiceBusExplorer). MIT licensed.",
+        ["OK"]);
+
+    public static string LogText(IEnumerable<LogEntry> entries) => string.Join(Environment.NewLine, entries.Select(e => e.Text));
+
+    private CancellationTokenSource? _connecting;
+
+    [RelayCommand]
+    private void CancelConnect() => _connecting?.Cancel();
+
+    private async Task ConnectToAsync(ConnectionProfile profile, string? secret, bool isSaved)
+    {
+        if (Session is not null)
+        {
+            await DisconnectAsync();
+        }
+
+        using var connecting = _connecting = new CancellationTokenSource();
+        IsConnecting = true;
+        log.Info($"Connecting to {profile.FullyQualifiedNamespace ?? profile.Name}…");
+        try
+        {
+            Session = await connector.ConnectAsync(profile, secret, connecting.Token);
+            _isSavedConnection = isSaved;
+            log.Info(Session.CanManage
+                ? $"Connected to sb://{Session.FullyQualifiedNamespace}/."
+                : $"Connected to sb://{Session.FullyQualifiedNamespace}/ without management access (the credential has no Manage claim).");
+            await RememberHostAsync(Session.FullyQualifiedNamespace);
+            Explorer = new ExplorerViewModel(Session, dialogs, savePinnedEntities: SavePinnedAsync, log: log);
+            await Explorer.RefreshCommand.ExecuteAsync(null);
+        }
+        catch (OperationCanceledException)
+        {
+            log.Info("Connect cancelled.");
+        }
+        catch (Exception ex)
+        {
+            log.Error($"Could not connect to {profile.FullyQualifiedNamespace ?? profile.Name}: {ErrorMessages.Describe(ex)}");
+        }
+        finally
+        {
+            IsConnecting = false;
+            _connecting = null;
+        }
+    }
+
+    // Saved profiles from before the host was stored get it after their first successful connect.
+    private async Task RememberHostAsync(string host)
+    {
+        if (!_isSavedConnection || Session is null || Session.Profile.FullyQualifiedNamespace is not null)
         {
             return;
         }
 
-        item.Profile = item.Profile with { FullyQualifiedNamespace = host };
-        item.Host = host;
-        await store.SaveAsync(item.Profile, secret: null);
+        await SaveProfileAsync(Session.Profile with { FullyQualifiedNamespace = host });
     }
 
-    private async Task SavePinnedAsync(ConnectionItemViewModel item, IReadOnlyList<string> pinned)
-    {
-        item.Profile = item.Profile with { PinnedEntities = pinned };
-        await store.SaveAsync(item.Profile, secret: null);
-    }
+    private Task SavePinnedAsync(IReadOnlyList<string> pinned) =>
+        _isSavedConnection && Session is not null
+            ? SaveProfileAsync(Current() with { PinnedEntities = pinned })
+            : Task.CompletedTask;
 
-    private void SetStatus(string message, bool isError = false)
+    private ConnectionProfile Current() => SavedConnections.FirstOrDefault(p => p.Id == Session!.Profile.Id) ?? Session!.Profile;
+
+    private async Task SaveProfileAsync(ConnectionProfile profile)
     {
-        Status = message;
-        HasError = isError;
+        await store.SaveAsync(profile, secret: null);
+        var index = SavedConnections.ToList().FindIndex(p => p.Id == profile.Id);
+        if (index >= 0)
+        {
+            SavedConnections[index] = profile;
+        }
     }
 }

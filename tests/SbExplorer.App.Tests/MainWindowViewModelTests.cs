@@ -1,3 +1,4 @@
+using SbExplorer.App.Services;
 using SbExplorer.App.ViewModels;
 using SbExplorer.Core.Connections;
 using Xunit;
@@ -12,186 +13,169 @@ public class MainWindowViewModelTests
     private readonly FakeSecretStore _secrets = new();
     private readonly FakeConnector _connector = new();
     private readonly FakeDialogs _dialogs = new();
+    private readonly LogService _log = new();
     private readonly FakeConnectionStore _store;
     private readonly MainWindowViewModel _vm;
 
     public MainWindowViewModelTests()
     {
         _store = new FakeConnectionStore(_secrets);
-        _vm = new MainWindowViewModel(_store, _secrets, _connector, _dialogs);
+        _vm = new MainWindowViewModel(_store, _secrets, _connector, _dialogs, _log);
     }
 
-    [Fact]
-    public async Task Load_lists_saved_connections_with_their_host_without_reading_secrets()
-    {
-        await _store.SaveAsync(new ConnectionProfile { Name = "Orders", FullyQualifiedNamespace = "orders.servicebus.windows.net" },
-            ConnectionString, TestContext.Current.CancellationToken);
-        await _store.SaveAsync(
-            new ConnectionProfile { Name = "Billing", Auth = AuthKind.Entra, FullyQualifiedNamespace = "billing.servicebus.windows.net" },
-            null,
-            TestContext.Current.CancellationToken);
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+    private string LastLog => _log.Entries[^1].Message;
 
+    private async Task<ConnectionProfile> SeedAsync(string name = "Orders", string? host = "orders.servicebus.windows.net")
+    {
+        var profile = new ConnectionProfile { Name = name, FullyQualifiedNamespace = host };
+        await _store.SaveAsync(profile, ConnectionString, Ct);
         await _vm.LoadCommand.ExecuteAsync(null);
+        return profile;
+    }
 
-        Assert.Collection(
-            _vm.Connections,
-            c => Assert.Equal(("Orders", "orders.servicebus.windows.net"), (c.Name, c.Host)),
-            c => Assert.Equal(("Billing", "billing.servicebus.windows.net"), (c.Name, c.Host)));
+    [Fact]
+    public async Task Load_lists_saved_connections_without_reading_secrets()
+    {
+        await SeedAsync();
+
+        Assert.Equal("Orders", Assert.Single(_vm.SavedConnections).Name);
+        Assert.True(_vm.HasSavedConnections);
         Assert.Equal(0, _secrets.Reads);
+        Assert.Equal("Service Bus Explorer", _vm.Title);
     }
 
     [Fact]
-    public async Task Added_connection_string_profiles_store_their_host()
+    public async Task Saved_connection_menu_connects_and_loads_the_tree()
     {
-        _dialogs.OnEditor = editor =>
+        var profile = await SeedAsync();
+
+        await _vm.ConnectSavedCommand.ExecuteAsync(profile);
+
+        Assert.True(_vm.IsConnected);
+        Assert.NotNull(_vm.Explorer);
+        Assert.Equal(ConnectionString, _connector.Requests.Single().Secret);
+        Assert.Equal("orders.servicebus.windows.net - Service Bus Explorer", _vm.Title);
+        Assert.Contains(_log.Entries, e => e.Message == "Connected to sb://orders.servicebus.windows.net/.");
+    }
+
+    [Fact]
+    public async Task Connect_dialog_can_connect_without_saving()
+    {
+        _dialogs.OnConnectDialog = dialog =>
         {
-            editor.Name = "Orders";
-            editor.ConnectionString = ConnectionString;
-            return true;
+            dialog.Editor.ConnectionString = ConnectionString;
+            dialog.OkCommand.Execute(null);
+            return Task.FromResult(true);
         };
-
-        await _vm.AddCommand.ExecuteAsync(null);
-
-        Assert.Equal("orders.servicebus.windows.net", _store.Profiles.Single().FullyQualifiedNamespace);
-        Assert.Equal("orders.servicebus.windows.net", _vm.Connections.Single().Host);
-    }
-
-    [Fact]
-    public async Task Connecting_backfills_the_host_of_older_profiles()
-    {
-        await SeedAndSelectAsync();
-        Assert.Null(_vm.SelectedConnection!.Host);
-
-        await _vm.ConnectCommand.ExecuteAsync(null);
-
-        Assert.Equal("fake.servicebus.windows.net", _vm.SelectedConnection.Host);
-        Assert.Equal("fake.servicebus.windows.net", _store.Profiles.Single().FullyQualifiedNamespace);
-    }
-
-    [Fact]
-    public async Task Add_saves_profile_and_secret_and_selects_it()
-    {
-        _dialogs.OnEditor = editor =>
-        {
-            editor.Name = "Orders";
-            editor.ConnectionString = ConnectionString;
-            return true;
-        };
-
-        await _vm.AddCommand.ExecuteAsync(null);
-
-        var saved = Assert.Single(_store.Profiles);
-        Assert.Equal("Orders", saved.Name);
-        Assert.Equal(ConnectionString, _secrets.Secrets[saved.SecretKey]);
-        Assert.Same(_vm.Connections.Single(), _vm.SelectedConnection);
-    }
-
-    [Fact]
-    public async Task Cancelled_add_saves_nothing()
-    {
-        await _vm.AddCommand.ExecuteAsync(null);
-
-        Assert.Empty(_store.Profiles);
-        Assert.Empty(_vm.Connections);
-    }
-
-    [Fact]
-    public async Task Delete_requires_confirmation()
-    {
-        await SeedAndSelectAsync();
-
-        _dialogs.ConfirmResult = false;
-        await _vm.DeleteCommand.ExecuteAsync(null);
-        Assert.Single(_store.Profiles);
-
-        _dialogs.ConfirmResult = true;
-        await _vm.DeleteCommand.ExecuteAsync(null);
-        Assert.Empty(_store.Profiles);
-        Assert.Empty(_vm.Connections);
-        Assert.Empty(_secrets.Secrets);
-    }
-
-    [Fact]
-    public async Task Connect_opens_session_and_marks_connection()
-    {
-        await SeedAndSelectAsync();
 
         await _vm.ConnectCommand.ExecuteAsync(null);
 
         Assert.True(_vm.IsConnected);
-        Assert.True(_vm.SelectedConnection!.IsConnected);
-        Assert.False(_vm.HasError);
-        Assert.StartsWith("Connected to", _vm.Status);
+        Assert.Empty(_store.Profiles);
+        Assert.Equal("orders.servicebus.windows.net", _connector.Requests.Single().Profile.Name);
     }
 
     [Fact]
-    public async Task Connect_failure_shows_error_and_stays_disconnected()
+    public async Task Cancelled_connect_dialog_does_nothing_but_picks_up_saved_changes()
     {
-        await SeedAndSelectAsync();
+        _dialogs.OnConnectDialog = async dialog =>
+        {
+            dialog.Editor.Name = "Saved in dialog";
+            dialog.Editor.ConnectionString = ConnectionString;
+            await dialog.SaveCommand.ExecuteAsync(null);
+            return false;
+        };
+
+        await _vm.ConnectCommand.ExecuteAsync(null);
+
+        Assert.False(_vm.IsConnected);
+        Assert.Equal("Saved in dialog", Assert.Single(_vm.SavedConnections).Name);
+    }
+
+    [Fact]
+    public async Task Connect_failure_is_logged_as_an_error()
+    {
+        var profile = await SeedAsync();
         _connector.Failure = new InvalidOperationException("No route to host\nstack trace noise");
 
-        await _vm.ConnectCommand.ExecuteAsync(null);
+        await _vm.ConnectSavedCommand.ExecuteAsync(profile);
 
         Assert.False(_vm.IsConnected);
-        Assert.True(_vm.HasError);
-        Assert.Equal("Could not connect to Orders: No route to host", _vm.Status);
+        Assert.True(_log.Entries[^1].IsError);
+        Assert.Equal("Could not connect to orders.servicebus.windows.net: No route to host", LastLog);
     }
 
     [Fact]
-    public async Task Connect_loads_the_entity_tree_and_disconnect_clears_it()
+    public async Task Missing_secret_is_reported_instead_of_connecting()
     {
-        await SeedAndSelectAsync();
-
-        await _vm.ConnectCommand.ExecuteAsync(null);
-        Assert.NotNull(_vm.Explorer);
-        Assert.NotNull(_vm.Explorer.LoadStatus);
-        Assert.False(_vm.Explorer.HasError);
-
-        await _vm.DisconnectCommand.ExecuteAsync(null);
-        Assert.Null(_vm.Explorer);
-    }
-
-    [Fact]
-    public async Task Disconnect_disposes_session()
-    {
-        await SeedAndSelectAsync();
-        await _vm.ConnectCommand.ExecuteAsync(null);
-
-        await _vm.DisconnectCommand.ExecuteAsync(null);
-
-        Assert.False(_vm.IsConnected);
-        Assert.True(Assert.Single(_connector.Sessions).Disposed);
-        Assert.False(_vm.Connections.Single().IsConnected);
-    }
-
-    [Fact]
-    public async Task Connecting_to_another_namespace_closes_the_first()
-    {
-        await SeedAndSelectAsync();
-        await _vm.ConnectCommand.ExecuteAsync(null);
-        var first = _vm.SelectedConnection!;
-
-        await _store.SaveAsync(new ConnectionProfile { Name = "Second" }, ConnectionString, TestContext.Current.CancellationToken);
+        var profile = new ConnectionProfile { Name = "Orders" };
+        await _store.SaveAsync(profile, secret: null, Ct);
         await _vm.LoadCommand.ExecuteAsync(null);
-        _vm.SelectedConnection = _vm.Connections.Single(c => c.Name == "Second");
-        await _vm.ConnectCommand.ExecuteAsync(null);
+
+        await _vm.ConnectSavedCommand.ExecuteAsync(profile);
+
+        Assert.Empty(_connector.Requests);
+        Assert.Contains("No connection string is stored", LastLog);
+    }
+
+    [Fact]
+    public async Task Disconnect_disposes_session_and_clears_the_tree()
+    {
+        await _vm.ConnectSavedCommand.ExecuteAsync(await SeedAsync());
+
+        await _vm.DisconnectCommand.ExecuteAsync(null);
+
+        Assert.False(_vm.IsConnected);
+        Assert.Null(_vm.Explorer);
+        Assert.True(Assert.Single(_connector.Sessions).Disposed);
+        Assert.StartsWith("Disconnected from", LastLog);
+    }
+
+    [Fact]
+    public async Task Connecting_elsewhere_closes_the_current_session()
+    {
+        var first = await SeedAsync("First");
+        var second = await SeedAsync("Second");
+        await _vm.ConnectSavedCommand.ExecuteAsync(first);
+
+        await _vm.ConnectSavedCommand.ExecuteAsync(second);
 
         Assert.True(_connector.Sessions[0].Disposed);
         Assert.Equal("Second", _vm.Session!.Profile.Name);
     }
 
     [Fact]
-    public void Warns_when_secrets_are_not_in_a_keychain()
+    public async Task Connecting_backfills_the_host_of_older_saved_profiles()
     {
-        var vm = new MainWindowViewModel(_store, new FakeSecretStore(isSecure: false), _connector, _dialogs);
+        var profile = await SeedAsync(host: null);
 
-        Assert.True(vm.SecretsAreInsecure);
+        await _vm.ConnectSavedCommand.ExecuteAsync(profile);
+
+        Assert.Equal("fake.servicebus.windows.net", _store.Profiles.Single().FullyQualifiedNamespace);
+        Assert.Equal("fake.servicebus.windows.net", _vm.SavedConnections.Single().FullyQualifiedNamespace);
     }
 
-    private async Task SeedAndSelectAsync()
+    [Fact]
+    public async Task Log_commands_copy_save_and_clear()
     {
-        await _store.SaveAsync(new ConnectionProfile { Name = "Orders" }, ConnectionString, TestContext.Current.CancellationToken);
-        await _vm.LoadCommand.ExecuteAsync(null);
-        _vm.SelectedConnection = _vm.Connections.Single();
+        _log.Info("one");
+        _log.Error("two");
+
+        await _vm.CopyLogCommand.ExecuteAsync(null);
+        await _vm.SaveLogCommand.ExecuteAsync(null);
+        Assert.EndsWith("> two", _dialogs.CopiedText);
+        Assert.Equal("ServiceBusExplorer.log", _dialogs.SavedFiles.Single().Name);
+
+        _vm.ClearLogCommand.Execute(null);
+        Assert.Empty(_log.Entries);
+    }
+
+    [Fact]
+    public void Log_window_can_be_hidden()
+    {
+        _vm.ToggleLogCommand.Execute(null);
+
+        Assert.False(_vm.IsLogVisible);
     }
 }

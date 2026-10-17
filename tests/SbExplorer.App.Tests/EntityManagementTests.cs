@@ -44,7 +44,7 @@ public class EntityManagementTests
 
         Assert.Equal("events/Subscriptions/eu", _vm.SelectedEntity?.Path);
         Assert.True(Node("events").IsExpanded);
-        Assert.Equal("Created events/Subscriptions/eu.", _vm.LoadStatus);
+        Assert.Equal("The subscription events/Subscriptions/eu has been successfully created.", _vm.LoadStatus);
     }
 
     [Fact]

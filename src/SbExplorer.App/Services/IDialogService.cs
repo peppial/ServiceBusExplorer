@@ -4,8 +4,8 @@ namespace SbExplorer.App.Services;
 
 public interface IDialogService
 {
-    /// <summary>Shows the add/edit connection dialog; true when the user saved.</summary>
-    Task<bool> ShowConnectionEditorAsync(ConnectionEditorViewModel editor);
+    /// <summary>"Connect to a Service Bus Namespace"; true when the user chose OK.</summary>
+    Task<bool> ShowConnectDialogAsync(ConnectDialogViewModel dialog);
 
     /// <summary>Shows the send message dialog; true when messages were sent.</summary>
     Task<bool> ShowSendMessageAsync(SendMessageViewModel sender);

@@ -49,23 +49,22 @@ public partial class ConnectionEditorViewModel : ObservableObject
     ];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid), nameof(UseConnectionString))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid), nameof(CanSave), nameof(UseConnectionString), nameof(AuthIndex))]
+    [NotifyCanExecuteChangedFor(nameof(TestCommand))]
     private bool _useEntra;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid), nameof(CanSave))]
+    [NotifyCanExecuteChangedFor(nameof(TestCommand))]
     private string _connectionString = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    [NotifyPropertyChangedFor(nameof(ValidationError), nameof(IsValid), nameof(CanSave))]
+    [NotifyCanExecuteChangedFor(nameof(TestCommand))]
     private string _namespace = string.Empty;
 
     [ObservableProperty]
@@ -89,15 +88,22 @@ public partial class ConnectionEditorViewModel : ObservableObject
         set => UseEntra = !value;
     }
 
+    public IReadOnlyList<string> AuthOptions { get; } = ["Shared Access Signature", "Microsoft Entra ID"];
+
+    /// <summary>The Authentication dropdown: 0 = connection string (SAS), 1 = Entra.</summary>
+    public int AuthIndex
+    {
+        get => UseEntra ? 1 : 0;
+        set => UseEntra = value == 1;
+    }
+
+    /// <summary>Connecting only needs valid settings; saving also needs a name.</summary>
+    public bool CanSave => IsValid && !string.IsNullOrWhiteSpace(Name);
+
     public string? ValidationError
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(Name))
-            {
-                return "Give the connection a name.";
-            }
-
             if (UseEntra)
             {
                 return string.IsNullOrWhiteSpace(Namespace) ? "Enter the namespace host name." : null;
@@ -109,13 +115,10 @@ public partial class ConnectionEditorViewModel : ObservableObject
 
     public bool IsValid => ValidationError is null;
 
-    /// <summary>Raised when the user saves; the view closes the dialog in response.</summary>
-    public event EventHandler? Saved;
-
     public ConnectionProfile ToProfile() => new()
     {
         Id = _id,
-        Name = Name.Trim(),
+        Name = string.IsNullOrWhiteSpace(Name) ? DisplayHost ?? "Service Bus namespace" : Name.Trim(),
         Auth = UseEntra ? AuthKind.Entra : AuthKind.ConnectionString,
         FullyQualifiedNamespace = UseEntra
             ? NormalizeHost(Namespace)
@@ -126,6 +129,10 @@ public partial class ConnectionEditorViewModel : ObservableObject
     };
 
     public string? Secret => UseEntra ? null : ConnectionString.Trim();
+
+    private string? DisplayHost => UseEntra
+        ? string.IsNullOrWhiteSpace(Namespace) ? null : NormalizeHost(Namespace)
+        : ConnectionStringInfo.TryParse(ConnectionString, out var info, out _) ? info!.FullyQualifiedNamespace : null;
 
     [RelayCommand]
     private void UseEmulator()
@@ -138,8 +145,6 @@ public partial class ConnectionEditorViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(IsValid))]
-    private void Save() => Saved?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand(CanExecute = nameof(IsValid), IncludeCancelCommand = true)]
     private async Task TestAsync(CancellationToken cancellationToken)

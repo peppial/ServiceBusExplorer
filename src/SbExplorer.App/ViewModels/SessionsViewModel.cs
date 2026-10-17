@@ -20,7 +20,8 @@ public sealed class SessionRowViewModel(string sessionId, int? messageCount, Dat
 /// The Sessions tab of a session-enabled queue or subscription. The SDK can't list sessions, so they are found
 /// by peeking messages and grouping by session ID, or opened directly by ID.
 /// </summary>
-public partial class SessionsViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity) : ObservableObject, IAsyncDisposable
+public partial class SessionsViewModel(IMessageService service, IDialogService dialogs, EntityInfo entity, ILogService? log = null)
+    : ObservableObject, IAsyncDisposable
 {
     private readonly Dictionary<string, MessagesViewModel> _sessionMessages = [];
 
@@ -70,7 +71,7 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
 
             if (!_sessionMessages.TryGetValue(session.SessionId, out var messages))
             {
-                messages = new MessagesViewModel(service, dialogs, Entity, session.SessionId);
+                messages = new MessagesViewModel(service, dialogs, Entity, session.SessionId, log);
                 _sessionMessages[session.SessionId] = messages;
             }
 
@@ -229,6 +230,7 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
         try
         {
             Status = await operation();
+            log?.Info($"{Entity.Path}: {Status}");
         }
         catch (OperationCanceledException)
         {
@@ -238,6 +240,7 @@ public partial class SessionsViewModel(IMessageService service, IDialogService d
         {
             Status = ErrorMessages.Describe(ex);
             HasError = true;
+            log?.Error($"{Entity.Path}: {Status}");
         }
     }
 }
