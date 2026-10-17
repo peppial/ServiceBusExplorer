@@ -117,7 +117,9 @@ public partial class ConnectionEditorViewModel : ObservableObject
         Id = _id,
         Name = Name.Trim(),
         Auth = UseEntra ? AuthKind.Entra : AuthKind.ConnectionString,
-        FullyQualifiedNamespace = UseEntra ? NormalizeHost(Namespace) : null,
+        FullyQualifiedNamespace = UseEntra
+            ? NormalizeHost(Namespace)
+            : ConnectionStringInfo.TryParse(ConnectionString, out var info, out _) ? info!.FullyQualifiedNamespace : null,
         EntraCredential = SelectedCredential.Kind,
         TenantId = UseEntra && !string.IsNullOrWhiteSpace(TenantId) ? TenantId.Trim() : null,
         PinnedEntities = _pinnedEntities,

@@ -10,9 +10,13 @@ internal sealed class FakeSecretStore(bool isSecure = true) : ISecretStore
 {
     public Dictionary<string, string> Secrets { get; } = [];
     public bool IsSecure => isSecure;
+    public int Reads { get; private set; }
 
-    public Task<string?> GetAsync(string key, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Secrets.GetValueOrDefault(key));
+    public Task<string?> GetAsync(string key, CancellationToken cancellationToken = default)
+    {
+        Reads++;
+        return Task.FromResult(Secrets.GetValueOrDefault(key));
+    }
 
     public Task SetAsync(string key, string secret, CancellationToken cancellationToken = default)
     {

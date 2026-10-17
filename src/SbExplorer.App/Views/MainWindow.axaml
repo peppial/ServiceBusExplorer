@@ -5,6 +5,7 @@
         x:Class="SbExplorer.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="Service Bus Explorer"
+        Icon="/Assets/icon.png"
         Width="1360" Height="820" MinWidth="900" MinHeight="500">
   <DockPanel>
     <Border DockPanel.Dock="Bottom" Padding="10,6"

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Service Bus Explorer
+Comment=Browse and manage Azure Service Bus namespaces
+Exec=ServiceBusExplorer
+Icon=servicebusexplorer
+Terminal=false
+Categories=Development;Network;

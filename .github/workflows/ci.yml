@@ -19,4 +19,46 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore ServiceBusExplorer.slnx
       - run: dotnet build ServiceBusExplorer.slnx --no-restore -c Release
+      # Integration tests skip themselves here; the integration job below runs them against the emulator.
       - run: dotnet test --solution ServiceBusExplorer.slnx --no-build -c Release
+
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      SBX_REQUIRE_EMULATOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Start Service Bus emulator
+        run: docker compose -f docker/emulator.yml up -d
+      - name: Wait for emulator
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose -f docker/emulator.yml logs emulator | grep -q "Successfully Up"; then exit 0; fi
+            sleep 5
+          done
+          docker compose -f docker/emulator.yml logs
+          exit 1
+      - run: dotnet test --project tests/SbExplorer.IntegrationTests -c Release
+      - name: Emulator logs
+        if: failure()
+        run: docker compose -f docker/emulator.yml logs
+
+  package:
+    # Proves every platform package still builds; releases are made by release.yml.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64, os: ubuntu-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: osx-arm64, os: macos-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: build/publish.sh ${{ matrix.rid }}

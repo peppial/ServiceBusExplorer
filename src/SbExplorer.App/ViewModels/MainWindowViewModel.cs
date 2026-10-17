@@ -44,7 +44,7 @@ public partial class MainWindowViewModel(
             Connections.Clear();
             foreach (var profile in await store.LoadAsync())
             {
-                Connections.Add(new ConnectionItemViewModel(profile, await HostOfAsync(profile)));
+                Connections.Add(new ConnectionItemViewModel(profile, profile.FullyQualifiedNamespace));
             }
         }
         catch (Exception ex)
@@ -64,7 +64,7 @@ public partial class MainWindowViewModel(
 
         var profile = editor.ToProfile();
         await store.SaveAsync(profile, editor.Secret);
-        var item = new ConnectionItemViewModel(profile, await HostOfAsync(profile));
+        var item = new ConnectionItemViewModel(profile, profile.FullyQualifiedNamespace);
         Connections.Add(item);
         SelectedConnection = item;
     }
@@ -81,7 +81,7 @@ public partial class MainWindowViewModel(
 
         item.Profile = editor.ToProfile();
         await store.SaveAsync(item.Profile, editor.Secret);
-        item.Host = await HostOfAsync(item.Profile);
+        item.Host = item.Profile.FullyQualifiedNamespace;
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -123,6 +123,7 @@ public partial class MainWindowViewModel(
 
             Session = await connector.ConnectAsync(item.Profile, secret, cancellationToken);
             item.IsConnected = true;
+            await RememberHostAsync(item, Session.FullyQualifiedNamespace);
             SetStatus(Session.CanManage
                 ? $"Connected to {Session.FullyQualifiedNamespace}"
                 : $"Connected to {Session.FullyQualifiedNamespace} without management access (the credential has no Manage claim)");
@@ -167,6 +168,19 @@ public partial class MainWindowViewModel(
 
     private bool HasSelection() => SelectedConnection is not null;
 
+    // Profiles saved before the host was stored show it after their first successful connect.
+    private async Task RememberHostAsync(ConnectionItemViewModel item, string host)
+    {
+        if (item.Profile.FullyQualifiedNamespace is not null)
+        {
+            return;
+        }
+
+        item.Profile = item.Profile with { FullyQualifiedNamespace = host };
+        item.Host = host;
+        await store.SaveAsync(item.Profile, secret: null);
+    }
+
     private async Task SavePinnedAsync(ConnectionItemViewModel item, IReadOnlyList<string> pinned)
     {
         item.Profile = item.Profile with { PinnedEntities = pinned };
@@ -177,17 +191,5 @@ public partial class MainWindowViewModel(
     {
         Status = message;
         HasError = isError;
-    }
-
-    private async Task<string?> HostOfAsync(ConnectionProfile profile)
-    {
-        if (profile.Auth == AuthKind.Entra)
-        {
-            return profile.FullyQualifiedNamespace;
-        }
-
-        return ConnectionStringInfo.TryParse(await store.GetSecretAsync(profile), out var info, out _)
-            ? info!.FullyQualifiedNamespace
-            : null;
     }
 }

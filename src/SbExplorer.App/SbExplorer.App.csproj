@@ -5,9 +5,11 @@
     <AssemblyName>ServiceBusExplorer</AssemblyName>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
+    <!-- The .ico and .icns are packaging assets; only the PNG is loaded at runtime. -->
+    <AvaloniaResource Include="Assets\icon.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SbExplorer.Core\SbExplorer.Core.csproj" />

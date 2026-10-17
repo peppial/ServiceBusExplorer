@@ -22,9 +22,10 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
-    public async Task Load_lists_saved_connections_with_their_host()
+    public async Task Load_lists_saved_connections_with_their_host_without_reading_secrets()
     {
-        await _store.SaveAsync(new ConnectionProfile { Name = "Orders" }, ConnectionString, TestContext.Current.CancellationToken);
+        await _store.SaveAsync(new ConnectionProfile { Name = "Orders", FullyQualifiedNamespace = "orders.servicebus.windows.net" },
+            ConnectionString, TestContext.Current.CancellationToken);
         await _store.SaveAsync(
             new ConnectionProfile { Name = "Billing", Auth = AuthKind.Entra, FullyQualifiedNamespace = "billing.servicebus.windows.net" },
             null,
@@ -36,6 +37,35 @@ public class MainWindowViewModelTests
             _vm.Connections,
             c => Assert.Equal(("Orders", "orders.servicebus.windows.net"), (c.Name, c.Host)),
             c => Assert.Equal(("Billing", "billing.servicebus.windows.net"), (c.Name, c.Host)));
+        Assert.Equal(0, _secrets.Reads);
+    }
+
+    [Fact]
+    public async Task Added_connection_string_profiles_store_their_host()
+    {
+        _dialogs.OnEditor = editor =>
+        {
+            editor.Name = "Orders";
+            editor.ConnectionString = ConnectionString;
+            return true;
+        };
+
+        await _vm.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal("orders.servicebus.windows.net", _store.Profiles.Single().FullyQualifiedNamespace);
+        Assert.Equal("orders.servicebus.windows.net", _vm.Connections.Single().Host);
+    }
+
+    [Fact]
+    public async Task Connecting_backfills_the_host_of_older_profiles()
+    {
+        await SeedAndSelectAsync();
+        Assert.Null(_vm.SelectedConnection!.Host);
+
+        await _vm.ConnectCommand.ExecuteAsync(null);
+
+        Assert.Equal("fake.servicebus.windows.net", _vm.SelectedConnection.Host);
+        Assert.Equal("fake.servicebus.windows.net", _store.Profiles.Single().FullyQualifiedNamespace);
     }
 
     [Fact]

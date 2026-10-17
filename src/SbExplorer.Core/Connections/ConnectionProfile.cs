@@ -24,7 +24,11 @@ public sealed record ConnectionProfile
     public required string Name { get; init; }
     public AuthKind Auth { get; init; }
 
-    /// <summary>For Entra auth, e.g. <c>contoso.servicebus.windows.net</c>.</summary>
+    /// <summary>
+    /// The namespace host, e.g. <c>contoso.servicebus.windows.net</c>. Entra sign-in connects to it; for
+    /// connection strings it is a copy of the endpoint host, kept so the list can be shown without reading
+    /// secrets (which on macOS can prompt for the keychain password).
+    /// </summary>
     public string? FullyQualifiedNamespace { get; init; }
     public EntraCredentialKind EntraCredential { get; init; } = EntraCredentialKind.InteractiveBrowser;
     public string? TenantId { get; init; }
