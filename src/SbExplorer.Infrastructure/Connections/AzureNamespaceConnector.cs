@@ -1,4 +1,5 @@
 using Azure;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using SbExplorer.Core.Connections;
@@ -9,7 +10,8 @@ using SbExplorer.Infrastructure.Messaging;
 
 namespace SbExplorer.Infrastructure.Connections;
 
-public sealed class AzureNamespaceConnector : INamespaceConnector
+/// <param name="showDeviceCode">Shows device-code sign-in instructions; see <see cref="CredentialFactory.Create"/>.</param>
+public sealed class AzureNamespaceConnector(Func<DeviceCodeInfo, CancellationToken, Task>? showDeviceCode = null) : INamespaceConnector
 {
     public async Task<INamespaceSession> ConnectAsync(
         ConnectionProfile profile, string? secret, CancellationToken cancellationToken = default)
@@ -118,7 +120,7 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
             new ServiceBusAdministrationClient(ConnectionStringInfo.ForAdministration(unscoped)));
     }
 
-    private static AzureNamespaceSession CreateFromEntra(ConnectionProfile profile)
+    private AzureNamespaceSession CreateFromEntra(ConnectionProfile profile)
     {
         if (string.IsNullOrWhiteSpace(profile.FullyQualifiedNamespace))
         {
@@ -126,7 +128,7 @@ public sealed class AzureNamespaceConnector : INamespaceConnector
         }
 
         var host = profile.FullyQualifiedNamespace.Trim();
-        var credential = CredentialFactory.Create(profile);
+        var credential = CredentialFactory.Create(profile, showDeviceCode);
         return new AzureNamespaceSession(
             profile,
             host,

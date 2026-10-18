@@ -229,6 +229,12 @@ public partial class EntityEditorViewModel : ObservableObject
     public static EntityEditorViewModel NewRule(IEntityService entities, string topic, string subscription) =>
         new(entities, EntityKind.Rule, true, topic, subscription) { RuleName = string.Empty, SqlExpression = "1=1" };
 
+    /// <summary>
+    /// An edited entity's settings as the form first showed them; saving sends only what differs from these, so
+    /// changes made elsewhere in the meantime survive.
+    /// </summary>
+    private object? _baseline;
+
     public static async Task<EntityEditorViewModel> EditAsync(IEntityService entities, EntityInfo entity, CancellationToken cancellationToken = default)
     {
         var parts = entity.Path.Split('/');
@@ -238,18 +244,21 @@ public partial class EntityEditorViewModel : ObservableObject
             {
                 var editor = new EntityEditorViewModel(entities, EntityKind.Queue, false, null, null);
                 editor.Load(await entities.GetQueueAsync(entity.Name, cancellationToken));
+                editor._baseline = editor.BuildQueue();
                 return editor;
             }
             case EntityKind.Topic:
             {
                 var editor = new EntityEditorViewModel(entities, EntityKind.Topic, false, null, null);
                 editor.Load(await entities.GetTopicAsync(entity.Name, cancellationToken));
+                editor._baseline = editor.BuildTopic();
                 return editor;
             }
             case EntityKind.Subscription:
             {
                 var editor = new EntityEditorViewModel(entities, EntityKind.Subscription, false, parts[0], null);
                 editor.Load(await entities.GetSubscriptionAsync(parts[0], entity.Name, cancellationToken));
+                editor._baseline = editor.BuildSubscription();
                 return editor;
             }
             default:
@@ -378,17 +387,32 @@ public partial class EntityEditorViewModel : ObservableObject
             {
                 case EntityKind.Queue:
                     var queue = BuildQueue();
-                    await (IsNew ? _entities.CreateQueueAsync(queue, cancellationToken) : _entities.UpdateQueueAsync(queue, cancellationToken));
+                    await (IsNew
+                        ? _entities.CreateQueueAsync(queue, cancellationToken)
+                        : _entities.UpdateQueueAsync(
+                            DefinitionMerge.ChangesOnto((QueueDefinition)_baseline!, queue, await _entities.GetQueueAsync(queue.Name, cancellationToken)),
+                            cancellationToken));
                     SavedPath = queue.Name;
                     break;
                 case EntityKind.Topic:
                     var topic = BuildTopic();
-                    await (IsNew ? _entities.CreateTopicAsync(topic, cancellationToken) : _entities.UpdateTopicAsync(topic, cancellationToken));
+                    await (IsNew
+                        ? _entities.CreateTopicAsync(topic, cancellationToken)
+                        : _entities.UpdateTopicAsync(
+                            DefinitionMerge.ChangesOnto((TopicDefinition)_baseline!, topic, await _entities.GetTopicAsync(topic.Name, cancellationToken)),
+                            cancellationToken));
                     SavedPath = topic.Name;
                     break;
                 case EntityKind.Subscription:
                     var subscription = BuildSubscription();
-                    await (IsNew ? _entities.CreateSubscriptionAsync(subscription, cancellationToken) : _entities.UpdateSubscriptionAsync(subscription, cancellationToken));
+                    await (IsNew
+                        ? _entities.CreateSubscriptionAsync(subscription, cancellationToken)
+                        : _entities.UpdateSubscriptionAsync(
+                            DefinitionMerge.ChangesOnto(
+                                (SubscriptionDefinition)_baseline!,
+                                subscription,
+                                await _entities.GetSubscriptionAsync(subscription.Topic, subscription.Name, cancellationToken)),
+                            cancellationToken));
                     SavedPath = EntityInfo.SubscriptionPath(subscription.Topic, subscription.Name);
                     break;
                 default:

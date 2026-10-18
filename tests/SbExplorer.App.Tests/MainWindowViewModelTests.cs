@@ -46,6 +46,19 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Overlapping_loads_list_each_saved_connection_once()
+    {
+        await SeedAsync("Local emulator", "localhost");
+        await SeedAsync("test");
+        _store.LoadDelay = TimeSpan.FromMilliseconds(50);
+
+        // Startup loads when the app starts and again when the window opens.
+        await Task.WhenAll(_vm.LoadCommand.ExecuteAsync(null), _vm.LoadCommand.ExecuteAsync(null));
+
+        Assert.Equal(["Local emulator", "test"], _vm.SavedConnections.Select(p => p.Name));
+    }
+
+    [Fact]
     public async Task Saved_connection_menu_connects_and_loads_the_tree()
     {
         var profile = await SeedAsync();
@@ -57,6 +70,9 @@ public class MainWindowViewModelTests
         Assert.Equal(ConnectionString, _connector.Requests.Single().Secret);
         Assert.Equal("orders.servicebus.windows.net - Service Bus Explorer", _vm.Title);
         Assert.Contains(_log.Entries, e => e.Message == "Connected to sb://orders.servicebus.windows.net/.");
+
+        // A device-code window, if sign-in showed one, goes away once connecting is over.
+        Assert.Equal(1, _dialogs.DeviceCodeCloses);
     }
 
     [Fact]

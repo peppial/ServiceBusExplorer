@@ -35,8 +35,18 @@ internal sealed class FakeConnectionStore(ISecretStore secrets) : IConnectionSto
 {
     public List<ConnectionProfile> Profiles { get; } = [];
 
-    public Task<IReadOnlyList<ConnectionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ConnectionProfile>>(Profiles.ToList());
+    /// <summary>Makes loading take a while, so overlapping loads can be tested.</summary>
+    public TimeSpan LoadDelay { get; set; }
+
+    public async Task<IReadOnlyList<ConnectionProfile>> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        if (LoadDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(LoadDelay, cancellationToken);
+        }
+
+        return Profiles.ToList();
+    }
 
     public async Task SaveAsync(ConnectionProfile profile, string? secret, CancellationToken cancellationToken = default)
     {
@@ -163,6 +173,17 @@ internal sealed class FakeDialogs : IDialogService
         ConfirmCount++;
         return Task.FromResult(ConfirmResult);
     }
+
+    public List<string> DeviceCodes { get; } = [];
+    public int DeviceCodeCloses { get; private set; }
+
+    public Task ShowDeviceCodeAsync(string message, string code, Uri verificationUri)
+    {
+        DeviceCodes.Add(code);
+        return Task.CompletedTask;
+    }
+
+    public void CloseDeviceCode() => DeviceCodeCloses++;
 }
 
 internal sealed class FakeEntityService : IEntityService

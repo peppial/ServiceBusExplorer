@@ -371,11 +371,28 @@ public partial class MessagesViewModel : ObservableObject, IAsyncDisposable
     private async Task PurgeAsync(CancellationToken cancellationToken)
     {
         var target = PurgesAllSessions ? $"every session of {Source.EntityPath}" : SourceLabel;
-        if (!await _dialogs.ConfirmAsync("Purge",
-                $"Permanently delete every message in {target} that was enqueued before now? Messages that arrive while the purge runs are kept. This can't be undone.",
-                "Purge"))
+        var question = $"Permanently delete every message in {target} that was enqueued before now? Messages that arrive while the purge runs are kept. This can't be undone.";
+        if (IsDeadLetterView)
         {
-            return;
+            if (!await _dialogs.ConfirmAsync("Purge", question, "Purge"))
+            {
+                return;
+            }
+        }
+        else
+        {
+            // Messages consumers haven't processed yet are lost, so this asks as much as deleting the entity does.
+            var typed = await _dialogs.PromptAsync("Purge", $"{question}\n\nType '{Entity.Name}' to confirm:", string.Empty);
+            if (typed is null)
+            {
+                return;
+            }
+
+            if (!string.Equals(typed.Trim(), Entity.Name, StringComparison.Ordinal))
+            {
+                SetStatus($"Not purged: '{typed.Trim()}' doesn't match '{Entity.Name}'.", isError: true);
+                return;
+            }
         }
 
         // Progress reports are posted asynchronously; one arriving after the result must not overwrite it.

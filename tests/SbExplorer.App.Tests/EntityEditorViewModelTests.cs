@@ -82,6 +82,39 @@ public class EntityEditorViewModelTests
     }
 
     [Fact]
+    public async Task Saving_an_edit_sends_only_what_changed_so_changes_made_elsewhere_survive()
+    {
+        _entities.Definitions["orders"] = new QueueDefinition { Name = "orders", MaxDeliveryCount = 10, LockDuration = TimeSpan.FromSeconds(30) };
+        var vm = await EntityEditorViewModel.EditAsync(_entities, FakeEntityService.Queue("orders"), TestContext.Current.CancellationToken);
+
+        // While the form is open, someone disables the queue and changes its lock duration.
+        _entities.Definitions["orders"] = new QueueDefinition
+        {
+            Name = "orders", MaxDeliveryCount = 10, LockDuration = TimeSpan.FromMinutes(2), Status = EntityStatusValue.Disabled,
+        };
+        vm.MaxDeliveryCount = 3;
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        var saved = (QueueDefinition)_entities.Definitions["orders"];
+        Assert.Equal((3, TimeSpan.FromMinutes(2), EntityStatusValue.Disabled), (saved.MaxDeliveryCount, saved.LockDuration, saved.Status));
+    }
+
+    [Fact]
+    public async Task Saving_an_edited_subscription_keeps_settings_changed_elsewhere()
+    {
+        var path = EntityInfo.SubscriptionPath("events", "billing");
+        _entities.Definitions[path] = new SubscriptionDefinition { Topic = "events", Name = "billing", ForwardTo = "audit" };
+        var vm = await EntityEditorViewModel.EditAsync(_entities, FakeEntityService.Subscription("events", "billing"), TestContext.Current.CancellationToken);
+
+        _entities.Definitions[path] = new SubscriptionDefinition { Topic = "events", Name = "billing", ForwardTo = "audit-v2" };
+        vm.UserMetadata = "owned by billing";
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        var saved = (SubscriptionDefinition)_entities.Definitions[path];
+        Assert.Equal(("audit-v2", "owned by billing"), (saved.ForwardTo, saved.UserMetadata));
+    }
+
+    [Fact]
     public async Task New_subscription_can_start_with_a_filter()
     {
         var vm = EntityEditorViewModel.NewSubscription(_entities, "events");

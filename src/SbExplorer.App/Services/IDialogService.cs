@@ -28,4 +28,12 @@ public interface IDialogService
 
     /// <summary>Shows a message with one button per option; returns the chosen index, or null when cancelled.</summary>
     Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> options);
+
+    /// <summary>
+    /// Shows device-code sign-in instructions without blocking, from any thread; replaces any shown before.
+    /// </summary>
+    Task ShowDeviceCodeAsync(string message, string code, Uri verificationUri);
+
+    /// <summary>Closes the device-code window, if one is open.</summary>
+    void CloseDeviceCode();
 }

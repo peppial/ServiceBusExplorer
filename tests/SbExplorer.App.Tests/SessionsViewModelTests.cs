@@ -162,7 +162,7 @@ public class SessionsViewModelTests
     {
         Seed();
         var messages = new MessagesViewModel(_service, _dialogs, Queue);
-        _dialogs.ConfirmResult = true;
+        _dialogs.PromptResult = Queue.Name;
 
         Assert.False(messages.ReceiveLockedCommand.CanExecute(null));
         Assert.True(messages.PurgeCommand.CanExecute(null));

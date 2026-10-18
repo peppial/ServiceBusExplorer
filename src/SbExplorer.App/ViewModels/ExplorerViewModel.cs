@@ -406,7 +406,8 @@ public partial class ExplorerViewModel(
         }
 
         var choice = await dialogs.ChooseAsync("Import",
-            $"Import {Plural(definition.EntityCount, "entity", "entities")} into {session.FullyQualifiedNamespace}. What should happen to entities that already exist?",
+            $"Import {Plural(definition.EntityCount, "entity", "entities")} into {session.FullyQualifiedNamespace}. What should happen to entities that already exist?\n\n"
+            + "Overwriting replaces their settings with the file's, and gives each subscription exactly the file's rules: rules the file doesn't list, such as $Default, are deleted.",
             ["Skip existing", "Overwrite existing"]);
         if (choice is null)
         {

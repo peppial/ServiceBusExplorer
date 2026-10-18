@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using SbExplorer.App.ViewModels;
 using SbExplorer.App.Views;
 
@@ -88,6 +89,26 @@ public sealed class DialogService : IDialogService
         var window = new ChoiceWindow(message, options) { Title = title };
         return await window.ShowDialog<int?>(Owner);
     }
+
+    private DeviceCodeWindow? _deviceCode;
+
+    // The SDK calls this from a background thread and only starts polling for the sign-in once it returns.
+    public Task ShowDeviceCodeAsync(string message, string code, Uri verificationUri) =>
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _deviceCode?.Close();
+            _deviceCode = new DeviceCodeWindow(message, code, verificationUri);
+            _deviceCode.Closed += (sender, _) =>
+            {
+                if (ReferenceEquals(sender, _deviceCode))
+                {
+                    _deviceCode = null;
+                }
+            };
+            _deviceCode.Show(Owner);
+        }).GetTask();
+
+    public void CloseDeviceCode() => Dispatcher.UIThread.Post(() => _deviceCode?.Close());
 
     private static Window Owner =>
         (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow

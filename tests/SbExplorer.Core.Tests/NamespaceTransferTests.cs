@@ -134,6 +134,80 @@ public class NamespaceTransferTests
     }
 
     [Fact]
+    public async Task Overwriting_a_subscription_deletes_rules_the_file_does_not_have()
+    {
+        var export = await new NamespaceTransfer(_entities).ExportAsync("source", cancellationToken: TestContext.Current.CancellationToken);
+        var target = new InMemoryEntityService();
+        target.Add(new TopicDefinition { Name = "events" });
+        target.Add(new SubscriptionDefinition { Topic = "events", Name = "high" },
+            new RuleDefinition { Name = RuleDefinition.DefaultName, FilterKind = RuleFilterKind.True });
+
+        await new NamespaceTransfer(target).ImportAsync(export, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        // A leftover match-all $Default would make the filtered subscription receive every message.
+        Assert.Equal(["p", "c"], target.RulesOf("events", "high").Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task A_file_without_rules_leaves_the_subscription_rules_alone()
+    {
+        var target = new InMemoryEntityService();
+        target.Add(new TopicDefinition { Name = "events" });
+        target.Add(new SubscriptionDefinition { Topic = "events", Name = "s" }, new RuleDefinition { Name = "keep", SqlExpression = "a = 1" });
+        var file = new NamespaceDefinition
+        {
+            Topics = [new TopicDefinition { Name = "events", Subscriptions = [new SubscriptionDefinition { Topic = "events", Name = "s", MaxDeliveryCount = 3 }] }],
+        };
+
+        await new NamespaceTransfer(target).ImportAsync(file, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["keep"], target.RulesOf("events", "s").Select(r => r.Name));
+        Assert.Equal(3, target.Subscriptions["events/Subscriptions/s"].MaxDeliveryCount);
+    }
+
+    [Fact]
+    public async Task Forwarding_to_an_entity_later_in_the_file_is_set_once_it_exists()
+    {
+        var file = new NamespaceDefinition
+        {
+            Queues =
+            [
+                new QueueDefinition { Name = "a-intake", ForwardTo = "events", ForwardDeadLetteredMessagesTo = "z-errors" },
+                new QueueDefinition { Name = "z-errors" },
+            ],
+            Topics =
+            [
+                new TopicDefinition
+                {
+                    Name = "events",
+                    Subscriptions = [new SubscriptionDefinition { Topic = "events", Name = "copy", ForwardTo = "z-errors" }],
+                },
+            ],
+        };
+        var target = new InMemoryEntityService();
+
+        var results = await new NamespaceTransfer(target).ImportAsync(file, overwrite: false, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.All(results, r => Assert.Equal(ImportOutcome.Created, r.Outcome));
+        Assert.Equal(4, results.Count);
+        Assert.Equal(("events", "z-errors"), (target.Queues["a-intake"].ForwardTo, target.Queues["a-intake"].ForwardDeadLetteredMessagesTo));
+        Assert.Equal("z-errors", target.Subscriptions["events/Subscriptions/copy"].ForwardTo);
+    }
+
+    [Fact]
+    public async Task A_missing_forwarding_target_fails_that_entity_but_keeps_it_created()
+    {
+        var file = new NamespaceDefinition { Queues = [new QueueDefinition { Name = "orders", ForwardTo = "nowhere" }] };
+        var target = new InMemoryEntityService();
+
+        var result = Assert.Single(await new NamespaceTransfer(target).ImportAsync(file, overwrite: false, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(ImportOutcome.Failed, result.Outcome);
+        Assert.StartsWith("Created, but forwarding could not be set", result.Error);
+        Assert.Null(target.Queues["orders"].ForwardTo);
+    }
+
+    [Fact]
     public async Task One_failure_does_not_stop_the_import()
     {
         var export = await new NamespaceTransfer(_entities).ExportAsync("source", cancellationToken: TestContext.Current.CancellationToken);
@@ -198,22 +272,25 @@ internal sealed class InMemoryEntityService : IEntityService
     public Task<RuleDefinition> GetRuleAsync(string topic, string subscription, string name, CancellationToken cancellationToken = default) =>
         Task.FromResult(RulesOf(topic, subscription).Single(r => r.Name == name));
 
-    public Task CreateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) => Do(queue.Name, () => Add(queue));
+    public Task CreateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) =>
+        Do(queue.Name, () => Add(RequireTargets(queue, queue.ForwardTo, queue.ForwardDeadLetteredMessagesTo)));
     public Task CreateTopicAsync(TopicDefinition topic, CancellationToken cancellationToken = default) => Do(topic.Name, () => Add(topic));
 
     public Task CreateSubscriptionAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken = default) =>
-        Do(subscription.Name, () => Add(subscription, subscription.Rules.Count > 0
+        Do(subscription.Name, () => Add(RequireTargets(subscription, subscription.ForwardTo, subscription.ForwardDeadLetteredMessagesTo), subscription.Rules.Count > 0
             ? [.. subscription.Rules]
             : [new RuleDefinition { Name = RuleDefinition.DefaultName, FilterKind = RuleFilterKind.True }]));
 
     public Task CreateRuleAsync(string topic, string subscription, RuleDefinition rule, CancellationToken cancellationToken = default) =>
         Do(rule.Name, () => Rules[EntityInfo.SubscriptionPath(topic, subscription)].Add(rule));
 
-    public Task UpdateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) => Do(queue.Name, () => Add(queue));
+    public Task UpdateQueueAsync(QueueDefinition queue, CancellationToken cancellationToken = default) =>
+        Do(queue.Name, () => Add(RequireTargets(queue, queue.ForwardTo, queue.ForwardDeadLetteredMessagesTo)));
     public Task UpdateTopicAsync(TopicDefinition topic, CancellationToken cancellationToken = default) => Do(topic.Name, () => Add(topic));
 
     public Task UpdateSubscriptionAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken = default) =>
-        Do(subscription.Name, () => Subscriptions[EntityInfo.SubscriptionPath(subscription.Topic, subscription.Name)] = subscription with { Rules = [] });
+        Do(subscription.Name, () => Subscriptions[EntityInfo.SubscriptionPath(subscription.Topic, subscription.Name)] =
+            RequireTargets(subscription, subscription.ForwardTo, subscription.ForwardDeadLetteredMessagesTo) with { Rules = [] });
 
     public Task UpdateRuleAsync(string topic, string subscription, RuleDefinition rule, CancellationToken cancellationToken = default) =>
         Do(rule.Name, () =>
@@ -222,8 +299,28 @@ internal sealed class InMemoryEntityService : IEntityService
             rules[rules.FindIndex(r => r.Name == rule.Name)] = rule;
         });
 
-    public Task DeleteAsync(EntityInfo entity, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task DeleteAsync(EntityInfo entity, CancellationToken cancellationToken = default)
+    {
+        Assert.Equal(EntityKind.Rule, entity.Kind);
+        var parts = entity.Path.Split('/');
+        Rules[EntityInfo.SubscriptionPath(parts[0], parts[2])].RemoveAll(r => r.Name == entity.Name);
+        return Task.CompletedTask;
+    }
     public Task SetStatusAsync(EntityInfo entity, EntityStatusValue status, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    // Like Service Bus, forwarding to an entity that doesn't exist is refused.
+    private T RequireTargets<T>(T entity, params string?[] targets)
+    {
+        foreach (var target in targets.Where(t => t is not null))
+        {
+            if (!Queues.ContainsKey(target!) && !Topics.ContainsKey(target!))
+            {
+                throw new InvalidOperationException($"The forwarding target {target} doesn't exist.");
+            }
+        }
+
+        return entity;
+    }
 
     private Task Do(string name, Action action)
     {
@@ -232,8 +329,15 @@ internal sealed class InMemoryEntityService : IEntityService
             return Task.FromException(new InvalidOperationException("quota exceeded\nTrackingId: 123"));
         }
 
-        action();
-        return Task.CompletedTask;
+        try
+        {
+            action();
+            return Task.CompletedTask;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Task.FromException(ex);
+        }
     }
 
     private static EntityInfo Info(EntityKind kind, string name, string path) => new() { Kind = kind, Name = name, Path = path };

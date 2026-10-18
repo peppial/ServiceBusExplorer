@@ -122,7 +122,8 @@ public sealed class NamespaceTransfer(IEntityService entities)
 
     /// <summary>
     /// Creates every entity in <paramref name="definition"/> that doesn't exist yet. Existing ones are updated
-    /// when <paramref name="overwrite"/> is set and skipped otherwise. One failure doesn't stop the rest.
+    /// when <paramref name="overwrite"/> is set and skipped otherwise; an updated subscription ends up with exactly
+    /// the file's rules. One failure doesn't stop the rest.
     /// </summary>
     public async Task<IReadOnlyList<ImportItemResult>> ImportAsync(
         NamespaceDefinition definition,
@@ -138,14 +139,41 @@ public sealed class NamespaceTransfer(IEntityService entities)
             progress?.Report(result);
         }
 
+        // A forwarding target can come later in the file (a queue forwarding to a topic), so entities that forward
+        // are imported without it first and get it once everything exists.
+        var forwarding = new List<(ImportItemResult Result, Func<Task> SetForwarding)>();
+
+        void Defer(ImportItemResult result, Func<Task> setForwarding)
+        {
+            if (result.Outcome is ImportOutcome.Created or ImportOutcome.Updated)
+            {
+                forwarding.Add((result, setForwarding));
+            }
+            else
+            {
+                Report(result);
+            }
+        }
+
         var existingQueues = Names(await entities.GetQueuesAsync(cancellationToken));
         var existingTopics = Names(await entities.GetTopicsAsync(cancellationToken));
 
         foreach (var queue in definition.Queues)
         {
-            Report(await ApplyAsync(queue.Name, existingQueues.Contains(queue.Name), overwrite,
-                () => entities.CreateQueueAsync(queue, cancellationToken),
-                () => entities.UpdateQueueAsync(queue, cancellationToken)));
+            var exists = existingQueues.Contains(queue.Name);
+            if (Forwards(queue.ForwardTo, queue.ForwardDeadLetteredMessagesTo))
+            {
+                Defer(await ApplyAsync(queue.Name, exists, overwrite,
+                        () => entities.CreateQueueAsync(queue with { ForwardTo = null, ForwardDeadLetteredMessagesTo = null }, cancellationToken),
+                        () => Task.CompletedTask),
+                    () => entities.UpdateQueueAsync(queue, cancellationToken));
+            }
+            else
+            {
+                Report(await ApplyAsync(queue.Name, exists, overwrite,
+                    () => entities.CreateQueueAsync(queue, cancellationToken),
+                    () => entities.UpdateQueueAsync(queue, cancellationToken)));
+            }
         }
 
         foreach (var topic in definition.Topics)
@@ -167,9 +195,37 @@ public sealed class NamespaceTransfer(IEntityService entities)
                 var path = EntityInfo.SubscriptionPath(topic.Name, subscription.Name);
                 var item = subscription with { Topic = topic.Name };
                 var exists = existingSubscriptions.Contains(subscription.Name);
-                Report(await ApplyAsync(path, exists, overwrite,
-                    () => CreateSubscriptionWithRulesAsync(item, cancellationToken),
-                    () => UpdateSubscriptionWithRulesAsync(item, cancellationToken)));
+                if (Forwards(item.ForwardTo, item.ForwardDeadLetteredMessagesTo))
+                {
+                    Defer(await ApplyAsync(path, exists, overwrite,
+                            () => CreateSubscriptionWithRulesAsync(item with { ForwardTo = null, ForwardDeadLetteredMessagesTo = null }, cancellationToken),
+                            () => SyncRulesAsync(item, cancellationToken)),
+                        () => entities.UpdateSubscriptionAsync(item, cancellationToken));
+                }
+                else
+                {
+                    Report(await ApplyAsync(path, exists, overwrite,
+                        () => CreateSubscriptionWithRulesAsync(item, cancellationToken),
+                        async () =>
+                        {
+                            await entities.UpdateSubscriptionAsync(item, cancellationToken);
+                            await SyncRulesAsync(item, cancellationToken);
+                        }));
+                }
+            }
+        }
+
+        foreach (var (result, setForwarding) in forwarding)
+        {
+            try
+            {
+                await setForwarding();
+                Report(result);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var prefix = result.Outcome == ImportOutcome.Created ? "Created, but forwarding could not be set: " : string.Empty;
+                Report(result with { Outcome = ImportOutcome.Failed, Error = prefix + FirstLine(ex) });
             }
         }
 
@@ -186,13 +242,23 @@ public sealed class NamespaceTransfer(IEntityService entities)
         }
     }
 
-    private async Task UpdateSubscriptionWithRulesAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken)
+    /// <summary>
+    /// Makes the subscription's rules match the file. Rules the file doesn't have are deleted, or a leftover
+    /// $Default would make a filtered subscription receive every message. They go last, so the subscription is
+    /// never without a rule (which would drop its messages). A file listing no rules leaves them alone.
+    /// </summary>
+    private async Task SyncRulesAsync(SubscriptionDefinition subscription, CancellationToken cancellationToken)
     {
-        await entities.UpdateSubscriptionAsync(subscription, cancellationToken);
-        var existingRules = Names(await entities.GetRulesAsync(subscription.Topic, subscription.Name, cancellationToken));
+        if (subscription.Rules.Count == 0)
+        {
+            return;
+        }
+
+        var existing = await entities.GetRulesAsync(subscription.Topic, subscription.Name, cancellationToken);
+        var existingNames = Names(existing);
         foreach (var rule in subscription.Rules)
         {
-            if (existingRules.Contains(rule.Name))
+            if (existingNames.Contains(rule.Name))
             {
                 await entities.UpdateRuleAsync(subscription.Topic, subscription.Name, rule, cancellationToken);
             }
@@ -201,7 +267,18 @@ public sealed class NamespaceTransfer(IEntityService entities)
                 await entities.CreateRuleAsync(subscription.Topic, subscription.Name, rule, cancellationToken);
             }
         }
+
+        var wanted = subscription.Rules.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in existing.Where(r => !wanted.Contains(r.Name)))
+        {
+            await entities.DeleteAsync(stale, cancellationToken);
+        }
     }
+
+    private static bool Forwards(string? forwardTo, string? forwardDeadLettersTo) =>
+        !string.IsNullOrWhiteSpace(forwardTo) || !string.IsNullOrWhiteSpace(forwardDeadLettersTo);
+
+    private static string FirstLine(Exception ex) => ex.Message.Split('\n', 2)[0].Trim();
 
     private static async Task<ImportItemResult> ApplyAsync(string path, bool exists, bool overwrite, Func<Task> create, Func<Task> update)
     {
@@ -217,7 +294,7 @@ public sealed class NamespaceTransfer(IEntityService entities)
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new ImportItemResult(path, ImportOutcome.Failed, ex.Message.Split('\n', 2)[0].Trim());
+            return new ImportItemResult(path, ImportOutcome.Failed, FirstLine(ex));
         }
     }
 

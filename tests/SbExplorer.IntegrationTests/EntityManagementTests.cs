@@ -51,6 +51,49 @@ public sealed class EntityManagementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Import_sets_forwarding_to_later_entities_and_overwrite_removes_leftover_rules()
+    {
+        var queue = $"a-fwd-{_suffix}";
+        var topic = $"z-fwd-{_suffix}";
+        Track(EntityKind.Queue, queue);
+        Track(EntityKind.Topic, topic);
+        var file = new NamespaceDefinition
+        {
+            Queues = [new QueueDefinition { Name = queue, ForwardTo = topic, DefaultMessageTimeToLive = TimeSpan.FromHours(1) }],
+            Topics =
+            [
+                new TopicDefinition
+                {
+                    Name = topic,
+                    DefaultMessageTimeToLive = TimeSpan.FromHours(1),
+                    Subscriptions =
+                    [
+                        new SubscriptionDefinition
+                        {
+                            Topic = topic,
+                            Name = "high",
+                            DefaultMessageTimeToLive = TimeSpan.FromHours(1),
+                            Rules = [new RuleDefinition { Name = "p", SqlExpression = "priority = 'high'" }],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        // The topic comes after the queue that forwards to it.
+        var created = await new NamespaceTransfer(Entities).ImportAsync(file, overwrite: false, cancellationToken: Ct);
+        Assert.All(created, r => Assert.Equal(ImportOutcome.Created, r.Outcome));
+        Assert.Equal(topic, (await Entities.GetQueueAsync(queue, Ct)).ForwardTo);
+
+        // A match-all rule added since would make the filtered subscription receive everything.
+        await Entities.CreateRuleAsync(topic, "high", new RuleDefinition { Name = RuleDefinition.DefaultName, FilterKind = RuleFilterKind.True }, Ct);
+        var updated = await new NamespaceTransfer(Entities).ImportAsync(file, overwrite: true, cancellationToken: Ct);
+
+        Assert.All(updated, r => Assert.Equal(ImportOutcome.Updated, r.Outcome));
+        Assert.Equal(["p"], (await Entities.GetRulesAsync(topic, "high", Ct)).Select(r => r.Name));
+    }
+
+    [Fact]
     public async Task Queue_create_read_update_disable_delete()
     {
         var name = $"crud-q-{_suffix}";

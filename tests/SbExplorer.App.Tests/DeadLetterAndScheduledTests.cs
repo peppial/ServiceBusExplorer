@@ -147,6 +147,26 @@ public class DeadLetterAndScheduledTests
     }
 
     [Fact]
+    public async Task Purging_an_active_queue_needs_its_name_typed()
+    {
+        _service.Seed(Orders.Path, 3);
+        var vm = new MessagesViewModel(_service, _dialogs, Orders);
+        _dialogs.ConfirmResult = true;
+
+        _dialogs.PromptResult = null;
+        await vm.PurgeCommand.ExecuteAsync(null);
+        _dialogs.PromptResult = "order";
+        await vm.PurgeCommand.ExecuteAsync(null);
+        Assert.Equal(3, _service.Messages(Orders.Path).Count);
+        Assert.Equal("Not purged: 'order' doesn't match 'orders'.", vm.Status);
+        Assert.Equal(0, _dialogs.ConfirmCount);
+
+        _dialogs.PromptResult = " orders ";
+        await vm.PurgeCommand.ExecuteAsync(null);
+        Assert.Empty(_service.Messages(Orders.Path));
+    }
+
+    [Fact]
     public void Active_queue_of_a_session_entity_cannot_be_received_but_can_be_purged()
     {
         var vm = new MessagesViewModel(_service, _dialogs, Orders with { RequiresSession = true });

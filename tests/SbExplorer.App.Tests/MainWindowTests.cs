@@ -11,6 +11,18 @@ namespace SbExplorer.App.Tests;
 public class MainWindowTests
 {
     [AvaloniaFact]
+    public void Device_code_window_shows_the_code_and_instructions()
+    {
+        var window = new DeviceCodeWindow("To sign in, open https://login.microsoft.com/device and enter ABCD1234.", "ABCD1234",
+            new Uri("https://login.microsoft.com/device"));
+        window.Show();
+
+        Assert.Equal("ABCD1234", window.FindControl<SelectableTextBlock>("CodeText")!.Text);
+        Assert.Contains("enter ABCD1234", window.FindControl<SelectableTextBlock>("MessageText")!.Text);
+        Assert.Equal(new Uri("https://login.microsoft.com/device"), window.VerificationUri);
+    }
+
+    [AvaloniaFact]
     public async Task Shows_menu_panels_and_log_and_lists_saved_connections()
     {
         var secrets = new FakeSecretStore();

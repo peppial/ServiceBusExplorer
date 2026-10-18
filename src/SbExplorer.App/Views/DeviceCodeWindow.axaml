@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SbExplorer.App.Views.DeviceCodeWindow"
+        Title="Sign in with a device code"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="20" Spacing="14">
+    <SelectableTextBlock x:Name="MessageText" TextWrapping="Wrap" />
+    <SelectableTextBlock x:Name="CodeText" FontSize="22" FontWeight="SemiBold" FontFamily="Menlo,Consolas,monospace"
+                         HorizontalAlignment="Center" />
+    <TextBlock Text="This window closes by itself once the sign-in completes." Opacity="0.7" TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+      <Button Content="Copy code" Click="OnCopy" />
+      <Button Content="Open sign-in page" IsDefault="True" Click="OnOpen" />
+      <Button Content="Close" IsCancel="True" Click="OnClose" />
+    </StackPanel>
+  </StackPanel>
+</Window>

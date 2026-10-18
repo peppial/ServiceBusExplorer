@@ -47,8 +47,10 @@ public partial class MainWindowViewModel(
     {
         try
         {
+            // Read first, then replace: clearing before the await let two overlapping loads both add their results.
+            var profiles = await store.LoadAsync();
             SavedConnections.Clear();
-            foreach (var profile in await store.LoadAsync())
+            foreach (var profile in profiles)
             {
                 SavedConnections.Add(profile);
             }
@@ -197,6 +199,7 @@ public partial class MainWindowViewModel(
         }
         finally
         {
+            dialogs.CloseDeviceCode();
             IsConnecting = false;
             _connecting = null;
         }

@@ -27,7 +27,6 @@ public partial class App : Application
             var viewModel = Services.GetRequiredService<MainWindowViewModel>();
             desktop.MainWindow = new MainWindow { DataContext = viewModel };
             desktop.ShutdownRequested += async (_, _) => await viewModel.DisconnectCommand.ExecuteAsync(null);
-            viewModel.LoadCommand.Execute(null);
 
             // Like the original, start with empty panels and go straight to "Connect to a Service Bus Namespace".
             desktop.MainWindow.Opened += async (_, _) =>
@@ -51,7 +50,11 @@ public partial class App : Application
         services.AddSingleton(_ => SecretStoreFactory.CreateDefault(AppPaths.DataDirectory));
         services.AddSingleton<IConnectionStore>(sp =>
             new JsonConnectionStore(AppPaths.ConnectionsFile, sp.GetRequiredService<ISecretStore>()));
-        services.AddSingleton<INamespaceConnector, AzureNamespaceConnector>();
+        services.AddSingleton<INamespaceConnector>(sp => new AzureNamespaceConnector(async (info, _) =>
+        {
+            sp.GetRequiredService<ILogService>().Info(info.Message);
+            await sp.GetRequiredService<IDialogService>().ShowDeviceCodeAsync(info.Message, info.UserCode, info.VerificationUri);
+        }));
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<ILogService, LogService>();
         services.AddSingleton<MainWindowViewModel>();
